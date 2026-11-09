@@ -7,10 +7,10 @@ import android.os.BatteryManager
 
 /** Shared state for the current charging session (service and activity live in one process). */
 object ChargeState {
-    /** The charging screen is currently open. */
-    @Volatile var visible = false
+    /** The charging screen is currently in front of the user. */
+    @Volatile var foreground = false
 
-    /** The user closed the screen during this charge; do not reopen until the cable is replugged. */
+    /** The user closed the screen (touch / back / home). Cleared when the screen turns off or on, or on replug. */
     @Volatile var dismissed = false
 
     /** Battery reached 100% during this charge; do not reopen until the cable is replugged. */

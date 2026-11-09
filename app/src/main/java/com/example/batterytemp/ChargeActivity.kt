@@ -24,13 +24,14 @@ class ChargeActivity : Activity() {
     companion object {
         const val EXTRA_PREVIEW = "preview"
         private const val PREVIEW_MS = 1000L
-        private const val DIM_BRIGHTNESS = 0.01f
+
+        /** 0 = the lowest brightness the phone allows. */
+        private const val DIM_BRIGHTNESS = 0f
     }
 
     private lateinit var chargeView: ChargeView
     private val handler = Handler(Looper.getMainLooper())
     private var preview = false
-    private var autoClosed = false
 
     private val closeRunnable = Runnable { closeAutomatically() }
 
@@ -58,15 +59,11 @@ class ChargeActivity : Activity() {
 
         chargeView = ChargeView(this)
         setContentView(chargeView)
-        chargeView.setOnClickListener { finishAndRemoveTask() }
+        chargeView.setOnClickListener { dismissByUser() }
         hideSystemBars()
 
         val sticky = registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
-        if (preview) {
-            handler.postDelayed(closeRunnable, PREVIEW_MS)
-        } else {
-            ChargeState.visible = true
-        }
+        if (preview) handler.postDelayed(closeRunnable, PREVIEW_MS)
         onBattery(sticky)
     }
 
@@ -81,10 +78,35 @@ class ChargeActivity : Activity() {
             // Charging started while previewing: switch to charging mode.
             preview = false
             handler.removeCallbacks(closeRunnable)
-            ChargeState.visible = true
             onBattery(BatteryInfo.sticky(this))
         }
-        // Charging screen already open: ignore widget taps.
+        // Charging screen already open: nothing to do.
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (!preview) ChargeState.foreground = true
+    }
+
+    override fun onPause() {
+        ChargeState.foreground = false
+        super.onPause()
+    }
+
+    /** Home / recents pressed: the user wants to leave, so do not pop up again until the screen is toggled. */
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        if (!preview) ChargeState.dismissed = true
+    }
+
+    @Suppress("DEPRECATION")
+    override fun onBackPressed() {
+        dismissByUser()
+    }
+
+    private fun dismissByUser() {
+        if (!preview) ChargeState.dismissed = true
+        finishAndRemoveTask()
     }
 
     private fun onBattery(i: Intent?) {
@@ -103,7 +125,6 @@ class ChargeActivity : Activity() {
 
     private fun closeAutomatically() {
         if (isFinishing) return
-        autoClosed = true
         finishAndRemoveTask()
     }
 
@@ -137,11 +158,6 @@ class ChargeActivity : Activity() {
         try {
             unregisterReceiver(batteryReceiver)
         } catch (e: IllegalArgumentException) {
-        }
-        if (!preview) {
-            ChargeState.visible = false
-            // Closed by touch/back (not by 100% or unplug): stay closed until the cable is replugged.
-            if (!autoClosed) ChargeState.dismissed = true
         }
         super.onDestroy()
     }

@@ -12,8 +12,8 @@ import android.os.IBinder
 import android.provider.Settings
 
 /**
- * Always-on foreground service: keeps the widget number fresh and opens the
- * charging screen when the charger is connected (or when charging while the screen turns on).
+ * Always-on foreground service: keeps the widget fresh and shows the charging
+ * screen whenever the phone is charging (on plug-in and every time the screen turns on).
  */
 class MonitorService : Service() {
 
@@ -28,16 +28,16 @@ class MonitorService : Service() {
                 Intent.ACTION_POWER_DISCONNECTED -> ChargeState.reset()
                 Intent.ACTION_POWER_CONNECTED -> {
                     ChargeState.reset()
-                    handleCharge(BatteryInfo.sticky(context))
+                    showChargeScreen(BatteryInfo.sticky(context))
                 }
-                Intent.ACTION_BATTERY_CHANGED -> {
+                Intent.ACTION_BATTERY_CHANGED ->
                     BatteryWidgetProvider.updateAll(context, BatteryInfo.level(intent))
-                    handleCharge(intent)
-                }
+                Intent.ACTION_SCREEN_OFF -> ChargeState.dismissed = false
                 Intent.ACTION_SCREEN_ON -> {
+                    ChargeState.dismissed = false
                     val b = BatteryInfo.sticky(context)
                     BatteryWidgetProvider.updateAll(context, BatteryInfo.level(b))
-                    handleCharge(b)
+                    showChargeScreen(b)
                 }
             }
         }
@@ -49,6 +49,7 @@ class MonitorService : Service() {
         val filter = IntentFilter().apply {
             addAction(Intent.ACTION_BATTERY_CHANGED)
             addAction(Intent.ACTION_SCREEN_ON)
+            addAction(Intent.ACTION_SCREEN_OFF)
             addAction(Intent.ACTION_POWER_CONNECTED)
             addAction(Intent.ACTION_POWER_DISCONNECTED)
         }
@@ -69,7 +70,7 @@ class MonitorService : Service() {
         super.onDestroy()
     }
 
-    private fun handleCharge(i: Intent?) {
+    private fun showChargeScreen(i: Intent?) {
         if (i == null) return
         if (!BatteryInfo.plugged(i)) {
             ChargeState.reset()
@@ -80,9 +81,10 @@ class MonitorService : Service() {
             ChargeState.fullReached = true
             return
         }
-        if (level < 0 || ChargeState.fullReached || ChargeState.dismissed || ChargeState.visible) return
+        if (level < 0 || ChargeState.fullReached || ChargeState.dismissed) return
         if (!Settings.canDrawOverlays(this)) return
         try {
+            // singleTask: if the screen already exists it is simply brought to the front.
             startActivity(
                 Intent(this, ChargeActivity::class.java)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)

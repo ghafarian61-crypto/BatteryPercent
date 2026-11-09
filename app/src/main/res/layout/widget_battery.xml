@@ -2,10 +2,9 @@
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_root"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:padding="4dp"
-    android:background="@drawable/widget_bg">
+    android:layout_height="match_parent">
 
+    <!-- Transparent widget: the number grows and shrinks with the widget size. -->
     <TextView
         android:id="@+id/temp_value"
         android:layout_width="match_parent"
@@ -18,10 +17,11 @@
         android:maxLines="1"
         android:includeFontPadding="false"
         android:autoSizeTextType="uniform"
-        android:autoSizeMinTextSize="12sp"
-        android:autoSizeMaxTextSize="48sp"
-        android:shadowColor="#99000000"
+        android:autoSizeMinTextSize="8sp"
+        android:autoSizeMaxTextSize="500sp"
+        android:autoSizeStepGranularity="2sp"
+        android:shadowColor="#B3000000"
         android:shadowDx="0"
         android:shadowDy="1"
-        android:shadowRadius="6" />
+        android:shadowRadius="4" />
 </FrameLayout>
