@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Battery Percent</string>
+    <string name="channel_name">Battery percentage</string>
+    <string name="notif_title">Battery Percent</string>
+</resources>
