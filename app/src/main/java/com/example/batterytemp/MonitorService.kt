@@ -8,7 +8,9 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.provider.Settings
 
 /**
@@ -22,6 +24,8 @@ class MonitorService : Service() {
         private const val NOTIF_ID = 1
     }
 
+    private val handler = Handler(Looper.getMainLooper())
+
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             when (intent.action) {
@@ -32,7 +36,12 @@ class MonitorService : Service() {
                 }
                 Intent.ACTION_BATTERY_CHANGED ->
                     BatteryWidgetProvider.updateAll(context, BatteryInfo.level(intent))
-                Intent.ACTION_SCREEN_OFF -> ChargeState.dismissed = false
+                Intent.ACTION_SCREEN_OFF -> {
+                    // Screen turned off while charging: wake it again with our screen
+                    // so the phone's default charging display never takes over.
+                    ChargeState.dismissed = false
+                    handler.postDelayed({ showChargeScreen(BatteryInfo.sticky(this@MonitorService)) }, 400)
+                }
                 Intent.ACTION_SCREEN_ON -> {
                     ChargeState.dismissed = false
                     val b = BatteryInfo.sticky(context)
@@ -63,6 +72,7 @@ class MonitorService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
+        handler.removeCallbacksAndMessages(null)
         try {
             unregisterReceiver(receiver)
         } catch (e: IllegalArgumentException) {

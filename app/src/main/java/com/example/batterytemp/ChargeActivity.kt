@@ -9,6 +9,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.view.View
 import android.view.WindowInsets
 import android.view.WindowInsetsController
@@ -24,6 +25,7 @@ class ChargeActivity : Activity() {
     companion object {
         const val EXTRA_PREVIEW = "preview"
         private const val PREVIEW_MS = 1000L
+        private const val DOUBLE_TAP_MS = 500L
 
         /** 0 = the lowest brightness the phone allows. */
         private const val DIM_BRIGHTNESS = 0f
@@ -32,6 +34,7 @@ class ChargeActivity : Activity() {
     private lateinit var chargeView: ChargeView
     private val handler = Handler(Looper.getMainLooper())
     private var preview = false
+    private var lastTap = 0L
 
     private val closeRunnable = Runnable { closeAutomatically() }
 
@@ -59,7 +62,11 @@ class ChargeActivity : Activity() {
 
         chargeView = ChargeView(this)
         setContentView(chargeView)
-        chargeView.setOnClickListener { dismissByUser() }
+        // Double tap to close (like the phone's own screens); a single tap does nothing.
+        chargeView.setOnClickListener {
+            val now = SystemClock.uptimeMillis()
+            if (now - lastTap < DOUBLE_TAP_MS) dismissByUser() else lastTap = now
+        }
         hideSystemBars()
 
         val sticky = registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
