@@ -18,6 +18,8 @@ class ChargeView(context: Context) : View(context) {
     private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         textAlign = Paint.Align.CENTER
         typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        // Add subtle text glow / shadow to make numbers pop with high visual brightness
+        setShadowLayer(4f, 0f, 0f, Color.BLACK)
     }
 
     private val batteryBodyPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -38,12 +40,12 @@ class ChargeView(context: Context) : View(context) {
         invalidate()
     }
 
-    // Pure absolute temperature colors
+    // Pure absolute temperature colors (high brightness/saturation)
     private fun tempColor(temp: Float): Int = when {
-        temp <= 27.0f -> Color.rgb(0, 150, 255)  // Pure Blue
-        temp <= 30.0f -> Color.rgb(0, 255, 0)    // Pure Green
-        temp <= 35.0f -> Color.rgb(255, 140, 0)  // Pure Orange
-        else -> Color.rgb(255, 0, 0)             // Pure Red
+        temp <= 27.0f -> Color.rgb(0, 170, 255)  // Bright Pure Blue
+        temp <= 30.0f -> Color.rgb(0, 255, 100)  // Bright Pure Green
+        temp <= 35.0f -> Color.rgb(255, 160, 0)  // Bright Pure Orange
+        else -> Color.rgb(255, 0, 0)             // Bright Pure Red
     }
 
     // Force strictly English ASCII digits and '.' separator
@@ -103,28 +105,28 @@ class ChargeView(context: Context) : View(context) {
 
             val capRect = RectF(capLeft, capTop, capRight, screenTop)
             capPaint.shader = null
-            capPaint.color = Color.rgb(0, 150, 255) // Pure Blue
+            capPaint.color = Color.rgb(0, 150, 255)
             canvas.drawRoundRect(capRect, 10f, 10f, capPaint)
         }
 
-        // 2. Metallic Casing (Dim 3D Shell) up to activeTop
-        val dimShellGradient = LinearGradient(
+        // 2. FULL LENGTH Metallic/Glass 3D Outer Casing (so container is always visible around liquid, dim for burn-in protection)
+        val fullShellGradient = LinearGradient(
             left, 0f, right, 0f,
             intArrayOf(
-                Color.argb(12, 40, 45, 55),
-                Color.argb(18, 110, 115, 130),
-                Color.argb(22, 180, 185, 200),
-                Color.argb(12, 50, 55, 65)
+                Color.argb(35, 70, 75, 85),
+                Color.argb(60, 140, 145, 160),
+                Color.argb(75, 210, 215, 230),
+                Color.argb(35, 80, 85, 95)
             ),
             floatArrayOf(0.0f, 0.3f, 0.65f, 1.0f),
             Shader.TileMode.CLAMP
         )
-        batteryBodyPaint.shader = dimShellGradient
+        batteryBodyPaint.shader = fullShellGradient
         batteryBodyPaint.strokeWidth = 14f
-        val visibleShellRect = RectF(left, activeTop, right, screenBottom)
-        canvas.drawRoundRect(visibleShellRect, 24f, 24f, batteryBodyPaint)
+        val fullOuterRect = RectF(left, screenTop, right, screenBottom)
+        canvas.drawRoundRect(fullOuterRect, 28f, 28f, batteryBodyPaint)
 
-        // 3. DISCRETE PURE SOLID COLOR BLOCKS (Pure Red, Pure Orange, Pure Yellow, Pure Green)
+        // 3. DISCRETE PURE SOLID COLOR BLOCKS inside container (filling up to activeTop)
         val innerMargin = 10f
         val fillLeft = left + innerMargin
         val fillRight = right - innerMargin
@@ -137,10 +139,10 @@ class ChargeView(context: Context) : View(context) {
 
         val currentTop = activeTop + innerMargin
 
-        // Clip canvas to the curved inner battery container
+        // Clip canvas to the curved inner battery container so rounded corners look perfect
         val clipPath = Path()
         val innerContainerRect = RectF(fillLeft, currentTop, fillRight, fillBottom)
-        clipPath.addRoundRect(innerContainerRect, 16f, 16f, Path.Direction.CW)
+        clipPath.addRoundRect(innerContainerRect, 18f, 18f, Path.Direction.CW)
 
         val saveCount = canvas.save()
         canvas.clipPath(clipPath)
@@ -179,7 +181,7 @@ class ChargeView(context: Context) : View(context) {
 
         canvas.restoreToCount(saveCount)
 
-        // 4. Draw Pure Color English Numbers (54 / 32.7)
+        // 4. Draw MAXIMUM BRIGHTNESS English Numbers (54 / 32.7) with high intensity & contrast
         val hoursElapsed = (SystemClock.elapsedRealtime() - startTime) / (3600 * 1000)
         val shiftStep = (hoursElapsed % 3).toInt()
         val yOffset = shiftStep * 35f
@@ -199,7 +201,7 @@ class ChargeView(context: Context) : View(context) {
         textPaint.color = percentColor
         val percentWidth = textPaint.measureText(percentText)
 
-        textPaint.color = Color.rgb(0, 150, 255) // Pure Blue slash '/'
+        textPaint.color = Color.rgb(0, 180, 255) // High brightness Pure Blue slash '/'
         val slashWidth = textPaint.measureText(slashText)
 
         val tempNumberColor = tempColor(tempCelsius)
@@ -216,7 +218,7 @@ class ChargeView(context: Context) : View(context) {
         canvas.drawText(percentText, startX, baseTextY, textPaint)
 
         // Draw Slash '/'
-        textPaint.color = Color.rgb(0, 150, 255)
+        textPaint.color = Color.rgb(0, 180, 255)
         canvas.drawText(slashText, startX + percentWidth, baseTextY, textPaint)
 
         // Draw Temp (English Digits)
