@@ -38,17 +38,40 @@ class ChargeView(context: Context) : View(context) {
         invalidate()
     }
 
+    // Pure absolute temperature colors
     private fun tempColor(temp: Float): Int = when {
-        temp <= 27.0f -> Color.rgb(64, 156, 255)
-        temp <= 30.0f -> Color.rgb(48, 209, 88)
-        temp <= 35.0f -> Color.rgb(255, 149, 0)
-        else -> Color.rgb(255, 59, 48)
+        temp <= 27.0f -> Color.rgb(0, 150, 255)  // Pure Blue
+        temp <= 30.0f -> Color.rgb(0, 255, 0)    // Pure Green
+        temp <= 35.0f -> Color.rgb(255, 140, 0)  // Pure Orange
+        else -> Color.rgb(255, 0, 0)             // Pure Red
+    }
+
+    // Force strictly English ASCII digits and '.' separator
+    private fun toEnglishDigits(input: String): String {
+        val builder = StringBuilder()
+        for (ch in input) {
+            when (ch) {
+                '۰', '٠' -> builder.append('0')
+                '۱', '١' -> builder.append('1')
+                '۲', '٢' -> builder.append('2')
+                '۳', '٣' -> builder.append('3')
+                '۴', '٤' -> builder.append('4')
+                '۵', '٥' -> builder.append('5')
+                '۶', '٦' -> builder.append('6')
+                '۷', '٧' -> builder.append('7')
+                '۸', '٨' -> builder.append('8')
+                '۹', '٩' -> builder.append('9')
+                '٫', ',' -> builder.append('.')
+                else -> builder.append(ch)
+            }
+        }
+        return builder.toString()
     }
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
 
-        // Background is always solid pitch black (off for OLED/AMOLED)
+        // Background is solid black to turn off AMOLED/OLED pixels
         canvas.drawColor(Color.BLACK)
 
         val w = width.toFloat()
@@ -56,7 +79,6 @@ class ChargeView(context: Context) : View(context) {
 
         if (w <= 0 || h <= 0) return
 
-        // 3D Battery cylinder width
         val batteryWidth = min(w * 0.60f, 340f)
         val capHeight = 35f
         val capWidth = batteryWidth * 0.45f
@@ -64,41 +86,28 @@ class ChargeView(context: Context) : View(context) {
         val left = (w - batteryWidth) / 2f
         val right = left + batteryWidth
 
-        // Divide screen height into 100 steps from bottom to top
         val screenBottom = h - 20f
         val screenTop = 80f
         val totalMaxHeight = screenBottom - screenTop
 
-        // Active height based on exact charge percentage (1% to 100%)
+        // Active top based on exact battery percentage
         val fillRatio = batteryPercent / 100f
-        val currentFillHeight = (totalMaxHeight * fillRatio).coerceAtLeast(15f)
+        val currentFillHeight = (totalMaxHeight * fillRatio).coerceAtLeast(10f)
         val activeTop = screenBottom - currentFillHeight
 
-        // 1. Draw 3D Blue Positive Terminal (+) at top ONLY if 100% charged
+        // 1. Top Cap (+) Terminal - Pure Blue at 100%
         if (batteryPercent >= 100) {
             val capLeft = (w - capWidth) / 2f
             val capRight = capLeft + capWidth
             val capTop = screenTop - capHeight
 
             val capRect = RectF(capLeft, capTop, capRight, screenTop)
-            val capColor = Color.rgb(0, 150, 255) // Blue at 100%
-
-            val capGradient = LinearGradient(
-                capLeft, 0f, capRight, 0f,
-                intArrayOf(
-                    darkenColor(capColor, 0.4f),
-                    capColor,
-                    lightenColor(capColor, 1.3f),
-                    darkenColor(capColor, 0.5f)
-                ),
-                floatArrayOf(0.0f, 0.35f, 0.7f, 1.0f),
-                Shader.TileMode.CLAMP
-            )
-            capPaint.shader = capGradient
+            capPaint.shader = null
+            capPaint.color = Color.rgb(0, 150, 255) // Pure Blue
             canvas.drawRoundRect(capRect, 10f, 10f, capPaint)
         }
 
-        // 2. Draw Metallic 3D Shell Casing (Dim, ~0.01 brightness) ONLY up to current percent height
+        // 2. Metallic Casing (Dim 3D Shell) up to activeTop
         val dimShellGradient = LinearGradient(
             left, 0f, right, 0f,
             intArrayOf(
@@ -115,43 +124,74 @@ class ChargeView(context: Context) : View(context) {
         val visibleShellRect = RectF(left, activeTop, right, screenBottom)
         canvas.drawRoundRect(visibleShellRect, 24f, 24f, batteryBodyPaint)
 
-        // 3. Draw Multi-Color Liquid Fill (Red at bottom -> Orange -> Yellow -> Green at top)
+        // 3. DISCRETE PURE SOLID COLOR BLOCKS (Pure Red, Pure Orange, Pure Yellow, Pure Green)
         val innerMargin = 10f
         val fillLeft = left + innerMargin
         val fillRight = right - innerMargin
         val fillBottom = screenBottom - innerMargin
-        val fillTop = activeTop + innerMargin
 
-        if (fillBottom > fillTop) {
-            // Multi-color gradient matching user drawing: Red (0-30%), Orange (30-50%), Yellow (50-75%), Green (75-100%)
-            val multiColorGradient = LinearGradient(
-                0f, screenBottom, 0f, screenTop,
-                intArrayOf(
-                    Color.rgb(255, 50, 50),   // Red (bottom 0-30%)
-                    Color.rgb(255, 140, 0),  // Orange (30-50%)
-                    Color.rgb(255, 220, 0),  // Yellow (50-75%)
-                    Color.rgb(0, 230, 80)    // Green (75-100%)
-                ),
-                floatArrayOf(0.0f, 0.30f, 0.55f, 0.85f),
-                Shader.TileMode.CLAMP
-            )
-            fillPaint.shader = multiColorGradient
-            val fillRect = RectF(fillLeft, fillTop, fillRight, fillBottom)
-            canvas.drawRoundRect(fillRect, 16f, 16f, fillPaint)
+        val p30Y = screenBottom - (totalMaxHeight * 0.30f)
+        val p50Y = screenBottom - (totalMaxHeight * 0.50f)
+        val p75Y = screenBottom - (totalMaxHeight * 0.75f)
+        val p100Y = screenTop + innerMargin
+
+        val currentTop = activeTop + innerMargin
+
+        // Clip canvas to the curved inner battery container
+        val clipPath = Path()
+        val innerContainerRect = RectF(fillLeft, currentTop, fillRight, fillBottom)
+        clipPath.addRoundRect(innerContainerRect, 16f, 16f, Path.Direction.CW)
+
+        val saveCount = canvas.save()
+        canvas.clipPath(clipPath)
+
+        // Block 1: PURE RED (0% - 30%)
+        if (fillBottom > p30Y && fillBottom > currentTop) {
+            fillPaint.color = Color.rgb(255, 0, 0) // Pure Red
+            fillPaint.shader = null
+            val rectTop = currentTop.coerceAtLeast(p30Y)
+            canvas.drawRect(fillLeft, rectTop, fillRight, fillBottom, fillPaint)
         }
 
-        // 4. Draw FULL BRIGHTNESS ENGLISH NUMBERS ONLY (54 / 32.7) inside bottom area of battery
+        // Block 2: PURE ORANGE (30% - 50%)
+        if (p30Y > p50Y && p30Y > currentTop && batteryPercent > 30) {
+            fillPaint.color = Color.rgb(255, 128, 0) // Pure Orange
+            fillPaint.shader = null
+            val rectTop = currentTop.coerceAtLeast(p50Y)
+            canvas.drawRect(fillLeft, rectTop, fillRight, p30Y, fillPaint)
+        }
+
+        // Block 3: PURE YELLOW (50% - 75%)
+        if (p50Y > p75Y && p50Y > currentTop && batteryPercent > 50) {
+            fillPaint.color = Color.rgb(255, 255, 0) // Pure Yellow
+            fillPaint.shader = null
+            val rectTop = currentTop.coerceAtLeast(p75Y)
+            canvas.drawRect(fillLeft, rectTop, fillRight, p50Y, fillPaint)
+        }
+
+        // Block 4: PURE GREEN (75% - 100%)
+        if (p75Y > p100Y && p75Y > currentTop && batteryPercent > 75) {
+            fillPaint.color = Color.rgb(0, 255, 0) // Pure Green
+            fillPaint.shader = null
+            val rectTop = currentTop.coerceAtLeast(p100Y)
+            canvas.drawRect(fillLeft, rectTop, fillRight, p75Y, fillPaint)
+        }
+
+        canvas.restoreToCount(saveCount)
+
+        // 4. Draw Pure Color English Numbers (54 / 32.7)
         val hoursElapsed = (SystemClock.elapsedRealtime() - startTime) / (3600 * 1000)
-        val shiftStep = (hoursElapsed % 3).toInt() // 3-step burn-in protection shift
+        val shiftStep = (hoursElapsed % 3).toInt()
         val yOffset = shiftStep * 35f
 
         val baseTextY = screenBottom - 90f - yOffset
 
-        // Strictly enforce English locale for digits
-        val tempFormatted = String.format(Locale.US, "%.1f", tempCelsius)
-        val percentText = String.format(Locale.US, "%d", batteryPercent)
+        val tempRaw = String.format(Locale.US, "%.1f", tempCelsius)
+        val percentRaw = String.format(Locale.US, "%d", batteryPercent)
+
+        val percentText = toEnglishDigits(percentRaw)
         val slashText = " / "
-        val tempText = tempFormatted
+        val tempText = toEnglishDigits(tempRaw)
 
         textPaint.textSize = 50f
 
@@ -159,7 +199,7 @@ class ChargeView(context: Context) : View(context) {
         textPaint.color = percentColor
         val percentWidth = textPaint.measureText(percentText)
 
-        textPaint.color = Color.rgb(0, 150, 255) // Blue slash '/'
+        textPaint.color = Color.rgb(0, 150, 255) // Pure Blue slash '/'
         val slashWidth = textPaint.measureText(slashText)
 
         val tempNumberColor = tempColor(tempCelsius)
@@ -171,30 +211,16 @@ class ChargeView(context: Context) : View(context) {
 
         textPaint.textAlign = Paint.Align.LEFT
 
-        // Draw Percent Part (English Digits)
+        // Draw Percent
         textPaint.color = percentColor
         canvas.drawText(percentText, startX, baseTextY, textPaint)
 
-        // Draw Slash '/' (Blue)
+        // Draw Slash '/'
         textPaint.color = Color.rgb(0, 150, 255)
         canvas.drawText(slashText, startX + percentWidth, baseTextY, textPaint)
 
-        // Draw Temp Part (English Digits, Temp Color)
+        // Draw Temp (English Digits)
         textPaint.color = tempNumberColor
         canvas.drawText(tempText, startX + percentWidth + slashWidth, baseTextY, textPaint)
-    }
-
-    private fun lightenColor(color: Int, factor: Float): Int {
-        val r = (Color.red(color) * factor).coerceAtMost(255f).toInt()
-        val g = (Color.green(color) * factor).coerceAtMost(255f).toInt()
-        val b = (Color.blue(color) * factor).coerceAtMost(255f).toInt()
-        return Color.rgb(r, g, b)
-    }
-
-    private fun darkenColor(color: Int, factor: Float): Int {
-        val r = (Color.red(color) * factor).coerceAtLeast(0f).toInt()
-        val g = (Color.green(color) * factor).coerceAtLeast(0f).toInt()
-        val b = (Color.blue(color) * factor).coerceAtLeast(0f).toInt()
-        return Color.rgb(r, g, b)
     }
 }

@@ -24,24 +24,49 @@ class BatteryWidgetProvider : AppWidgetProvider() {
     }
 
     companion object {
+        // Absolute pure colors for battery levels
         fun colorFor(level: Int): Int = when {
             level < 0 -> Color.WHITE
-            level <= 30 -> Color.rgb(255, 59, 48)
-            level <= 50 -> Color.rgb(255, 149, 0)
-            level <= 70 -> Color.rgb(255, 214, 10)
-            else -> Color.rgb(48, 209, 88)
+            level <= 30 -> Color.rgb(255, 0, 0)      // Pure Red
+            level <= 50 -> Color.rgb(255, 128, 0)    // Pure Orange
+            level <= 70 -> Color.rgb(255, 255, 0)    // Pure Yellow
+            else -> Color.rgb(0, 255, 0)             // Pure Green
         }
 
+        // Absolute pure colors for temperatures
         fun tempColor(temp: Float): Int = when {
-            temp <= 27.0f -> Color.rgb(64, 156, 255)
-            temp <= 30.0f -> Color.rgb(48, 209, 88)
-            temp <= 35.0f -> Color.rgb(255, 149, 0)
-            else -> Color.rgb(255, 59, 48)
+            temp <= 27.0f -> Color.rgb(0, 150, 255)  // Pure Blue
+            temp <= 30.0f -> Color.rgb(0, 255, 0)    // Pure Green
+            temp <= 35.0f -> Color.rgb(255, 128, 0)  // Pure Orange
+            else -> Color.rgb(255, 0, 0)             // Pure Red
+        }
+
+        private fun toEnglishDigits(input: String): String {
+            val builder = StringBuilder()
+            for (ch in input) {
+                when (ch) {
+                    '۰', '٠' -> builder.append('0')
+                    '۱', '١' -> builder.append('1')
+                    '۲', '٢' -> builder.append('2')
+                    '۳', '٣' -> builder.append('3')
+                    '۴', '٤' -> builder.append('4')
+                    '۵', '٥' -> builder.append('5')
+                    '۶', '٦' -> builder.append('6')
+                    '۷', '٧' -> builder.append('7')
+                    '۸', '٨' -> builder.append('8')
+                    '۹', '٩' -> builder.append('9')
+                    '٫', ',' -> builder.append('.')
+                    else -> builder.append(ch)
+                }
+            }
+            return builder.toString()
         }
 
         private fun buildText(level: Int, tempTenths: Int): CharSequence {
             val sb = SpannableStringBuilder()
-            val levelText = if (level >= 0) String.format(Locale.US, "%d", level) else "--"
+            val levelRaw = if (level >= 0) String.format(Locale.US, "%d", level) else "--"
+            val levelText = toEnglishDigits(levelRaw)
+            
             sb.append(levelText)
             sb.setSpan(
                 ForegroundColorSpan(colorFor(level)),
@@ -53,12 +78,13 @@ class BatteryWidgetProvider : AppWidgetProvider() {
                 sb.append("/")
                 val slashStart = sb.length - 1
                 sb.setSpan(
-                    ForegroundColorSpan(Color.rgb(0, 150, 255)), // Blue slash
+                    ForegroundColorSpan(Color.rgb(0, 150, 255)), // Pure Blue slash
                     slashStart, sb.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
                 )
 
                 val start = sb.length
-                val tempFormatted = String.format(Locale.US, "%.1f", tempCelsius)
+                val tempRaw = String.format(Locale.US, "%.1f", tempCelsius)
+                val tempFormatted = toEnglishDigits(tempRaw)
                 sb.append(tempFormatted)
                 sb.setSpan(
                     ForegroundColorSpan(tempColor(tempCelsius)),
