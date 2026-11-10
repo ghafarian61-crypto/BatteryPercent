@@ -24,21 +24,20 @@ class BatteryWidgetProvider : AppWidgetProvider() {
     }
 
     companion object {
-        // Absolute pure colors for battery levels
         fun colorFor(level: Int): Int = when {
             level < 0 -> Color.WHITE
-            level <= 30 -> Color.rgb(255, 0, 0)      // Pure Red
-            level <= 50 -> Color.rgb(255, 128, 0)    // Pure Orange
-            level <= 70 -> Color.rgb(255, 255, 0)    // Pure Yellow
-            else -> Color.rgb(0, 255, 0)             // Pure Green
+            level <= 10 -> Color.rgb(255, 0, 0)     // Red
+            level <= 30 -> Color.rgb(255, 128, 0)   // Orange
+            level <= 60 -> Color.rgb(255, 255, 0)   // Yellow
+            level < 100 -> Color.rgb(0, 255, 0)     // Green
+            else -> Color.rgb(0, 150, 255)          // Blue
         }
 
-        // Absolute pure colors for temperatures
         fun tempColor(temp: Float): Int = when {
-            temp <= 27.0f -> Color.rgb(0, 150, 255)  // Pure Blue
-            temp <= 30.0f -> Color.rgb(0, 255, 0)    // Pure Green
-            temp <= 35.0f -> Color.rgb(255, 128, 0)  // Pure Orange
-            else -> Color.rgb(255, 0, 0)             // Pure Red
+            temp <= 27.0f -> Color.rgb(0, 190, 255)
+            temp <= 30.0f -> Color.rgb(0, 255, 120)
+            temp <= 35.0f -> Color.rgb(255, 175, 0)
+            else -> Color.rgb(255, 0, 0)
         }
 
         private fun toEnglishDigits(input: String): String {
@@ -78,7 +77,7 @@ class BatteryWidgetProvider : AppWidgetProvider() {
                 sb.append("/")
                 val slashStart = sb.length - 1
                 sb.setSpan(
-                    ForegroundColorSpan(Color.rgb(0, 150, 255)), // Pure Blue slash
+                    ForegroundColorSpan(Color.rgb(0, 200, 255)), // Ultra bright blue slash
                     slashStart, sb.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
                 )
 

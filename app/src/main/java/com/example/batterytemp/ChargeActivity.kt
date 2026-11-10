@@ -35,7 +35,6 @@ class ChargeActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Make activity full screen and hide status/navigation bars
         window.setFlags(
             WindowManager.LayoutParams.FLAG_FULLSCREEN,
             WindowManager.LayoutParams.FLAG_FULLSCREEN
@@ -50,7 +49,6 @@ class ChargeActivity : Activity() {
         chargeView = ChargeView(this)
         setContentView(chargeView)
 
-        // Setup double-tap gesture detector to close screen
         gestureDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
             override fun onDoubleTap(e: MotionEvent): Boolean {
                 finish()
@@ -63,7 +61,6 @@ class ChargeActivity : Activity() {
             true
         }
 
-        // Register initial battery broadcast
         val filter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
         val initialStatus = registerReceiver(batteryReceiver, filter)
         initialStatus?.let { handleBatteryIntent(it) }
@@ -92,13 +89,11 @@ class ChargeActivity : Activity() {
             autoCloseRunnable = Runnable { finish() }
             handler.postDelayed(autoCloseRunnable!!, 10000)
         } else if (levelChanged && pct > 0 && pct % 10 == 0) {
-            // Every 10% (10, 20, 30, 40, 50, 60, 70, 80, 90): pulse 1 second max brightness, then dim back if charging
-            pulseMaxBrightness(1000)
+            // Every 10% (10, 20, 30, 40, 50, 60, 70, 80, 90): pulse full brightness for 10 SECONDS
+            pulseMaxBrightness(10000)
         } else if (isPluggedIn) {
-            // While plugged in: 0.01 brightness (extremely dim for OLED burn-in protection)
             setBrightness(0.01f)
         } else {
-            // Opened manually from widget tap (not charging): full brightness and close after 1 second
             setBrightness(1.0f)
             cancelAutoCloseRunnable()
             autoCloseRunnable = Runnable { finish() }
@@ -136,7 +131,10 @@ class ChargeActivity : Activity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        unregisterReceiver(batteryReceiver)
+        try {
+            unregisterReceiver(batteryReceiver)
+        } catch (e: Exception) {
+        }
         cancelPendingRunnables()
     }
 }
