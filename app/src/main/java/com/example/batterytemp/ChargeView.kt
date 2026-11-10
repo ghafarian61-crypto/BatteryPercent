@@ -1,223 +1,196 @@
 package com.example.batterytemp
 
 import android.content.Context
-import android.graphics.Canvas
-import android.graphics.Color
-import android.graphics.LinearGradient
-import android.graphics.Paint
-import android.graphics.Path
-import android.graphics.RadialGradient
-import android.graphics.RectF
-import android.graphics.Shader
-import android.graphics.Typeface
-import android.util.TypedValue
+import android.graphics.*
+import android.os.SystemClock
 import android.view.View
 import kotlin.math.min
 
-/**
- * Black screen filled from the bottom like glossy liquid layers in a glass tube.
- * Bands from bottom to top: red 0-30, orange 30-50, yellow 50-70, green 70-100.
- * Every layer has depth shading, a curved front edge and the top layer has a shiny surface.
- * The level number (blue, no % sign) sits at the bottom centre.
- */
 class ChargeView(context: Context) : View(context) {
 
-    private class Band(val from: Int, val to: Int, val color: Int)
+    private var batteryPercent: Int = 0
+    private var tempCelsius: Float = 0.0f
 
-    private val bands = arrayOf(
-        Band(0, 30, Color.rgb(235, 40, 40)),
-        Band(30, 50, Color.rgb(255, 140, 20)),
-        Band(50, 70, Color.rgb(255, 215, 30)),
-        Band(70, 100, Color.rgb(40, 215, 80))
-    )
+    // Burn-in protection shift calculation (changes position every 1 hour in 3 steps)
+    private val startTime = SystemClock.elapsedRealtime()
 
-    private val density = resources.displayMetrics.density
-
-    private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val shadePaint = Paint()
-    private val capPaint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val rimPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE
-        color = Color.argb(120, 255, 255, 255)
-        strokeWidth = 1.5f * density
-    }
-    private val edgeShadowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE
-        color = Color.argb(170, 0, 0, 0)
-        strokeWidth = 6f * density
-    }
-    private val dimPaint = Paint().apply {
-        color = Color.argb(((1f - COLOR_SCALE) * 255f).toInt(), 0, 0, 0)
-    }
     private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = scale(NUMBER_COLOR, NUMBER_SCALE)
         textAlign = Paint.Align.CENTER
-        typeface = Typeface.DEFAULT_BOLD
-        textSize = TypedValue.applyDimension(
-            TypedValue.COMPLEX_UNIT_SP, 22f, resources.displayMetrics
-        )
+        typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
     }
-    private val bottomMargin = 56f * density
 
-    private val path = Path()
-    private val oval = RectF()
-    private var cylinderShade: Shader? = null
+    private val batteryBodyPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+    }
 
-    var temp: Int = BatteryInfo.NO_TEMP
-        set(value) {
-            field = value
-            invalidate()
-        }
+    private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+    }
 
-    /** 100% reached: whole screen solid green at full colour (no night dimming). */
-    var fullGreen: Boolean = false
-        set(value) {
-            field = value
-            invalidate()
-        }
+    private val capPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+    }
 
-    /** Short full-brightness flash: colours are drawn without the night dimming. */
-    var bright: Boolean = false
-        set(value) {
-            field = value
-            invalidate()
-        }
-
-    var level: Int = 0
-        set(value) {
-            field = value.coerceIn(0, 100)
-            invalidate()
-        }
-
-    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
-        super.onSizeChanged(w, h, oldw, oldh)
-        // Horizontal shading that makes the fill look like a round glass tube.
-        cylinderShade = LinearGradient(
-            0f, 0f, w.toFloat(), 0f,
-            intArrayOf(
-                Color.argb(150, 0, 0, 0),
-                Color.argb(0, 0, 0, 0),
-                Color.argb(80, 255, 255, 255),
-                Color.argb(0, 255, 255, 255),
-                Color.argb(0, 0, 0, 0),
-                Color.argb(140, 0, 0, 0)
-            ),
-            floatArrayOf(0f, 0.2f, 0.3f, 0.42f, 0.75f, 1f),
-            Shader.TileMode.CLAMP
-        )
+    fun updateData(percent: Int, temp: Float) {
+        this.batteryPercent = percent.coerceIn(0, 100)
+        this.tempCelsius = temp
+        invalidate()
     }
 
     override fun onDraw(canvas: Canvas) {
-        if (fullGreen) {
-            canvas.drawColor(Color.rgb(0, 255, 70))
-            return
-        }
+        super.onDraw(canvas)
+
+        // Background is always solid black to keep side/unused pixels off
         canvas.drawColor(Color.BLACK)
+
         val w = width.toFloat()
         val h = height.toFloat()
-        val eh = h * 0.035f // height of the perspective ellipses
 
-        var capY = 0f
-        var capColor = 0
-        var drawn = false
+        if (w <= 0 || h <= 0) return
 
-        for (b in bands) {
-            val top = min(level, b.to)
-            if (top <= b.from) break
-            val yTop = h * (1f - top / 100f)
-            val yBot = if (b.from == 0) h else h * (1f - b.from / 100f)
+        // Calculate 3D battery dimensions in the center of the screen
+        val batteryWidth = min(w * 0.55f, 320f)
+        val capHeight = 35f
+        val capWidth = batteryWidth * 0.45f
+        
+        val left = (w - batteryWidth) / 2f
+        val right = left + batteryWidth
+        val top = 80f
+        val bottom = h - 60f
+        val bodyHeight = bottom - top
 
-            // Layer shape: flat top, curved (bulging) front edge at the bottom.
-            oval.set(0f, yBot - eh / 2f, w, yBot + eh / 2f)
-            path.reset()
-            path.moveTo(0f, yTop)
-            path.lineTo(w, yTop)
-            path.lineTo(w, yBot)
-            path.arcTo(oval, 0f, 180f, false)
-            path.close()
+        // 1. Draw 3D Positive Terminal (+) at top
+        val capLeft = (w - capWidth) / 2f
+        val capRight = capLeft + capWidth
+        val capTop = top - capHeight
 
-            // Soft shadow this layer casts on the one below it.
-            if (b.from > 0) {
-                canvas.save()
-                canvas.translate(0f, 4f * density)
-                canvas.drawArc(oval, 0f, 180f, false, edgeShadowPaint)
-                canvas.restore()
-            }
+        val capRect = RectF(capLeft, capTop, capRight, top)
+        val capColor = if (batteryPercent >= 100) Color.rgb(0, 150, 255) else Color.rgb(180, 180, 190)
 
-            // Vertical depth: lighter at the top, darker at the bottom.
-            fillPaint.shader = LinearGradient(
-                0f, yTop, 0f, yBot,
-                scale(b.color, 1.2f), scale(b.color, 0.6f),
-                Shader.TileMode.CLAMP
-            )
-            canvas.drawPath(path, fillPaint)
-            fillPaint.shader = null
+        val capGradient = LinearGradient(
+            capLeft, 0f, capRight, 0f,
+            intArrayOf(
+                darkenColor(capColor, 0.5f),
+                capColor,
+                lightenColor(capColor, 1.4f),
+                darkenColor(capColor, 0.6f)
+            ),
+            floatArrayOf(0.0f, 0.35f, 0.7f, 1.0f),
+            Shader.TileMode.CLAMP
+        )
+        capPaint.shader = capGradient
+        canvas.drawRoundRect(capRect, 10f, 10f, capPaint)
 
-            // Round-tube shading and highlight.
-            canvas.save()
-            canvas.clipPath(path)
-            shadePaint.shader = cylinderShade
-            canvas.drawRect(0f, yTop - eh, w, yBot + eh, shadePaint)
-            shadePaint.shader = null
-            canvas.restore()
+        // 2. Draw 3D Metallic Shell/Casing for full battery length
+        val shellGradient = LinearGradient(
+            left, 0f, right, 0f,
+            intArrayOf(
+                Color.rgb(30, 35, 45),
+                Color.rgb(90, 95, 110),
+                Color.rgb(200, 205, 220),
+                Color.rgb(40, 45, 55)
+            ),
+            floatArrayOf(0.0f, 0.3f, 0.65f, 1.0f),
+            Shader.TileMode.CLAMP
+        )
+        batteryBodyPaint.shader = shellGradient
+        batteryBodyPaint.strokeWidth = 14f
+        val outerRect = RectF(left, top, right, bottom)
+        canvas.drawRoundRect(outerRect, 28f, 28f, batteryBodyPaint)
 
-            // Bright rim along the front edge.
-            if (b.from > 0) canvas.drawArc(oval, 0f, 180f, false, rimPaint)
+        // Inner fill area
+        val innerMargin = 10f
+        val fillLeft = left + innerMargin
+        val fillRight = right - innerMargin
+        val fillBottom = bottom - innerMargin
+        val fillMaxHeight = bodyHeight - (innerMargin * 2)
 
-            capY = yTop
-            capColor = b.color
-            drawn = true
+        // Level height inside battery
+        val currentFillHeight = (fillMaxHeight * (batteryPercent / 100f)).coerceAtLeast(12f)
+        val fillTop = fillBottom - currentFillHeight
+
+        // Gradient color based on percentage (Red at bottom -> Yellow -> Green at top)
+        val levelColor = calculateLevelColor(batteryPercent)
+
+        // 3D Metallic liquid fill gradient
+        val fillGradient = LinearGradient(
+            fillLeft, 0f, fillRight, 0f,
+            intArrayOf(
+                darkenColor(levelColor, 0.5f),
+                levelColor,
+                lightenColor(levelColor, 1.35f),
+                darkenColor(levelColor, 0.6f)
+            ),
+            floatArrayOf(0.0f, 0.35f, 0.75f, 1.0f),
+            Shader.TileMode.CLAMP
+        )
+        fillPaint.shader = fillGradient
+        val fillRect = RectF(fillLeft, fillTop, fillRight, fillBottom)
+        canvas.drawRoundRect(fillRect, 18f, 18f, fillPaint)
+
+        // 3. Draw Text (Percent & Temperature with decimal point) inside battery body at bottom
+        val hoursElapsed = (SystemClock.elapsedRealtime() - startTime) / (3600 * 1000)
+        val shiftStep = (hoursElapsed % 3).toInt() // 3-step burn-in protection shift: 0, 1, 2
+        val yOffset = shiftStep * 40f
+
+        // Position text in bottom area inside battery body
+        val baseTextY = fillBottom - 110f - yOffset
+
+        // Text 1: Percent
+        textPaint.textSize = 58f
+        textPaint.color = Color.WHITE
+        canvas.drawText("$batteryPercent%", w / 2f, baseTextY, textPaint)
+
+        // Text 2: Temperature with 1 decimal place (e.g. 25.5°C)
+        val tempFormatted = String.format("%.1f", tempCelsius)
+        val parts = tempFormatted.split(".")
+        val intPart = parts.getOrNull(0) ?: "0"
+        val decPart = parts.getOrNull(1) ?: "0"
+
+        textPaint.textSize = 42f
+        val tempY = baseTextY + 60f
+
+        val mainText = "$intPart."
+        val mainWidth = textPaint.measureText(mainText)
+        val decWidth = textPaint.measureText("$decPart°C")
+        val totalWidth = mainWidth + decWidth
+
+        val startX = (w - totalWidth) / 2f
+
+        // Integer part + dot color (White)
+        textPaint.textAlign = Paint.Align.LEFT
+        textPaint.color = Color.WHITE
+        canvas.drawText(mainText, startX, tempY, textPaint)
+
+        // Decimal part color (Red if >= 41°C, else White)
+        if (tempCelsius >= 41.0f) {
+            textPaint.color = Color.rgb(255, 60, 60) // Bright Red
+        } else {
+            textPaint.color = Color.WHITE
         }
-
-        // Shiny liquid surface on the top layer.
-        if (drawn) {
-            oval.set(0f, capY - eh / 2f, w, capY + eh / 2f)
-            capPaint.shader = RadialGradient(
-                w / 2f, capY, w / 2f,
-                intArrayOf(scale(capColor, 1.6f), scale(capColor, 1.15f)),
-                floatArrayOf(0.15f, 1f),
-                Shader.TileMode.CLAMP
-            )
-            canvas.drawOval(oval, capPaint)
-            capPaint.shader = null
-            canvas.drawOval(oval, rimPaint)
-        }
-
-        // Night mode: darken everything drawn so far (not during a flash).
-        if (!bright) canvas.drawRect(0f, 0f, w, h, dimPaint)
-
-        // The number never gets dimmed. To protect the screen from burn-in it moves every
-        // 10%: centre (0-9), right (10-19), left (20-29), centre (30-39), and so on.
-        val label = if (temp == BatteryInfo.NO_TEMP) level.toString() else "$level/$temp"
-        val shift = textPaint.measureText("0") * NUMBER_SHIFT_DIGITS
-        val x = when ((level / 10) % 3) {
-            1 -> w / 2f + shift
-            2 -> w / 2f - shift
-            else -> w / 2f
-        }
-        canvas.drawText(label, x, h - bottomMargin, textPaint)
+        canvas.drawText("$decPart°C", startX + mainWidth, tempY, textPaint)
     }
 
-    private fun scale(c: Int, f: Float): Int {
-        val r = (Color.red(c) * f).toInt().coerceIn(0, 255)
-        val g = (Color.green(c) * f).toInt().coerceIn(0, 255)
-        val b = (Color.blue(c) * f).toInt().coerceIn(0, 255)
+    private fun calculateLevelColor(pct: Int): Int {
+        return when {
+            pct <= 15 -> Color.rgb(240, 50, 50)   // Red
+            pct <= 45 -> Color.rgb(255, 170, 0)  // Orange / Amber
+            pct <= 75 -> Color.rgb(220, 220, 30) // Yellow-Green
+            else -> Color.rgb(40, 210, 90)        // Bright Green
+        }
+    }
+
+    private fun lightenColor(color: Int, factor: Float): Int {
+        val r = (Color.red(color) * factor).coerceAtMost(255f).toInt()
+        val g = (Color.green(color) * factor).coerceAtMost(255f).toInt()
+        val b = (Color.blue(color) * factor).coerceAtMost(255f).toInt()
         return Color.rgb(r, g, b)
     }
 
-    companion object {
-        /**
-         * Strength of the fill colours, 0..1. The panel runs at full brightness, so this must be
-         * very small to look dark at night. Raise it (0.10, 0.15 ...) if the colours are too faint,
-         * lower it (0.04) if they are too bright.
-         */
-        const val COLOR_SCALE = 0.07f
-
-        /** Blue number colour and its own brightness (0..1). */
-        val NUMBER_COLOR: Int = Color.rgb(41, 121, 255)
-        const val NUMBER_SCALE = 1f
-
-        /** How far the number moves every 10%, measured in digit widths. */
-        const val NUMBER_SHIFT_DIGITS = 2
+    private fun darkenColor(color: Int, factor: Float): Int {
+        val r = (Color.red(color) * factor).coerceAtLeast(0f).toInt()
+        val g = (Color.green(color) * factor).coerceAtLeast(0f).toInt()
+        val b = (Color.blue(color) * factor).coerceAtLeast(0f).toInt()
+        return Color.rgb(r, g, b)
     }
 }
