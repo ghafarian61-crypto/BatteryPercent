@@ -35,7 +35,7 @@ class MonitorService : Service() {
                     showChargeScreen(BatteryInfo.sticky(context))
                 }
                 Intent.ACTION_BATTERY_CHANGED ->
-                    BatteryWidgetProvider.updateAll(context, BatteryInfo.level(intent))
+                    BatteryWidgetProvider.updateAll(context, intent)
                 Intent.ACTION_SCREEN_OFF -> {
                     // Screen turned off while charging: wake it again with our screen
                     // so the phone's default charging display never takes over.
@@ -45,7 +45,7 @@ class MonitorService : Service() {
                 Intent.ACTION_SCREEN_ON -> {
                     ChargeState.dismissed = false
                     val b = BatteryInfo.sticky(context)
-                    BatteryWidgetProvider.updateAll(context, BatteryInfo.level(b))
+                    BatteryWidgetProvider.updateAll(context, b)
                     showChargeScreen(b)
                 }
             }
@@ -64,7 +64,7 @@ class MonitorService : Service() {
         }
         registerReceiver(receiver, filter)
         val b = BatteryInfo.sticky(this)
-        BatteryWidgetProvider.updateAll(this, BatteryInfo.level(b))
+        BatteryWidgetProvider.updateAll(this, b)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_STICKY

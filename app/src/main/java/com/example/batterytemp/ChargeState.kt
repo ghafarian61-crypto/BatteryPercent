@@ -34,6 +34,15 @@ object BatteryInfo {
         return if (l < 0 || s <= 0) -1 else l * 100 / s
     }
 
+    const val NO_TEMP = -1000
+
+    /** Battery temperature in whole degrees Celsius, or NO_TEMP when unknown. */
+    fun temp(i: Intent?): Int {
+        if (i == null) return NO_TEMP
+        val t = i.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, Int.MIN_VALUE)
+        return if (t == Int.MIN_VALUE) NO_TEMP else Math.round(t / 10f)
+    }
+
     fun plugged(i: Intent?): Boolean =
         i != null && i.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) != 0
 }
