@@ -63,6 +63,19 @@ class ChargeView(context: Context) : View(context) {
     private val oval = RectF()
     private var cylinderShade: Shader? = null
 
+    var temp: Int = BatteryInfo.NO_TEMP
+        set(value) {
+            field = value
+            invalidate()
+        }
+
+    /** 100% reached: whole screen solid green at full colour (no night dimming). */
+    var fullGreen: Boolean = false
+        set(value) {
+            field = value
+            invalidate()
+        }
+
     var level: Int = 0
         set(value) {
             field = value.coerceIn(0, 100)
@@ -88,6 +101,10 @@ class ChargeView(context: Context) : View(context) {
     }
 
     override fun onDraw(canvas: Canvas) {
+        if (fullGreen) {
+            canvas.drawColor(Color.rgb(0, 255, 70))
+            return
+        }
         canvas.drawColor(Color.BLACK)
         val w = width.toFloat()
         val h = height.toFloat()
@@ -162,7 +179,8 @@ class ChargeView(context: Context) : View(context) {
         // Night mode: darken everything drawn so far.
         canvas.drawRect(0f, 0f, w, h, dimPaint)
 
-        canvas.drawText(level.toString(), w / 2f, h - bottomMargin, textPaint)
+        val label = if (temp == BatteryInfo.NO_TEMP) level.toString() else "$level/$temp"
+        canvas.drawText(label, w / 2f, h - bottomMargin, textPaint)
     }
 
     private fun scale(c: Int, f: Float): Int {

@@ -26,6 +26,7 @@ class ChargeActivity : Activity() {
         const val EXTRA_PREVIEW = "preview"
         private const val PREVIEW_MS = 1000L
         private const val DOUBLE_TAP_MS = 500L
+        private const val FULL_GREEN_MS = 1000L
 
         /** 0 = the lowest brightness the phone allows. */
         private const val DIM_BRIGHTNESS = 0f
@@ -35,6 +36,7 @@ class ChargeActivity : Activity() {
     private val handler = Handler(Looper.getMainLooper())
     private var preview = false
     private var lastTap = 0L
+    private var showingFull = false
 
     private val closeRunnable = Runnable { closeAutomatically() }
 
@@ -119,15 +121,28 @@ class ChargeActivity : Activity() {
     private fun onBattery(i: Intent?) {
         if (isFinishing || i == null) return
         val level = BatteryInfo.level(i)
+        chargeView.temp = BatteryInfo.temp(i)
         if (level >= 0) chargeView.level = level
         if (!preview) {
             if (level >= 100) {
                 ChargeState.fullReached = true
-                closeAutomatically()
-            } else if (!BatteryInfo.plugged(i)) {
+                showFullGreenThenClose()
+            } else if (!BatteryInfo.plugged(i) && !showingFull) {
                 closeAutomatically()
             }
         }
+    }
+
+    /** Battery is full: whole screen green at maximum brightness for 1 second, then close. */
+    private fun showFullGreenThenClose() {
+        if (showingFull) return
+        showingFull = true
+        val lp = window.attributes
+        lp.screenBrightness = 1f
+        window.attributes = lp
+        chargeView.fullGreen = true
+        handler.removeCallbacks(closeRunnable)
+        handler.postDelayed(closeRunnable, FULL_GREEN_MS)
     }
 
     private fun closeAutomatically() {
