@@ -11,6 +11,7 @@ import android.text.Spannable
 import android.text.SpannableStringBuilder
 import android.text.style.ForegroundColorSpan
 import android.widget.RemoteViews
+import java.util.Locale
 
 class BatteryWidgetProvider : AppWidgetProvider() {
 
@@ -23,7 +24,6 @@ class BatteryWidgetProvider : AppWidgetProvider() {
     }
 
     companion object {
-        /** Percent colour: red up to 30, orange to 50, yellow to 70, green above. */
         fun colorFor(level: Int): Int = when {
             level < 0 -> Color.WHITE
             level <= 30 -> Color.rgb(255, 59, 48)
@@ -32,7 +32,6 @@ class BatteryWidgetProvider : AppWidgetProvider() {
             else -> Color.rgb(48, 209, 88)
         }
 
-        /** Temperature colour: up to 27 blue, 28-30 green, 31-35 orange, 36 and above red. */
         fun tempColor(temp: Float): Int = when {
             temp <= 27.0f -> Color.rgb(64, 156, 255)
             temp <= 30.0f -> Color.rgb(48, 209, 88)
@@ -40,10 +39,9 @@ class BatteryWidgetProvider : AppWidgetProvider() {
             else -> Color.rgb(255, 59, 48)
         }
 
-        /** Builds "55/33.8" with percent, blue slash, and decimal temperature with its color. */
         private fun buildText(level: Int, tempTenths: Int): CharSequence {
             val sb = SpannableStringBuilder()
-            val levelText = if (level >= 0) level.toString() else "--"
+            val levelText = if (level >= 0) String.format(Locale.US, "%d", level) else "--"
             sb.append(levelText)
             sb.setSpan(
                 ForegroundColorSpan(colorFor(level)),
@@ -60,7 +58,7 @@ class BatteryWidgetProvider : AppWidgetProvider() {
                 )
 
                 val start = sb.length
-                val tempFormatted = String.format("%.1f", tempCelsius)
+                val tempFormatted = String.format(Locale.US, "%.1f", tempCelsius)
                 sb.append(tempFormatted)
                 sb.setSpan(
                     ForegroundColorSpan(tempColor(tempCelsius)),
@@ -80,7 +78,6 @@ class BatteryWidgetProvider : AppWidgetProvider() {
 
             val text = buildText(level, tempTenths)
 
-            // Tapping the widget shows the level full screen for 1 second.
             val tap = PendingIntent.getActivity(
                 context,
                 0,

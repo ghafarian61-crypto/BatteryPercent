@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.*
 import android.os.SystemClock
 import android.view.View
+import java.util.Locale
 import kotlin.math.min
 
 class ChargeView(context: Context) : View(context) {
@@ -47,7 +48,7 @@ class ChargeView(context: Context) : View(context) {
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
 
-        // Background is always solid black to keep uncharged top/side pixels off
+        // Background is always solid pitch black (off for OLED/AMOLED)
         canvas.drawColor(Color.BLACK)
 
         val w = width.toFloat()
@@ -55,24 +56,31 @@ class ChargeView(context: Context) : View(context) {
 
         if (w <= 0 || h <= 0) return
 
-        // Calculate 3D battery dimensions in the center of the screen
-        val batteryWidth = min(w * 0.55f, 320f)
+        // 3D Battery cylinder width
+        val batteryWidth = min(w * 0.60f, 340f)
         val capHeight = 35f
         val capWidth = batteryWidth * 0.45f
 
         val left = (w - batteryWidth) / 2f
         val right = left + batteryWidth
-        val top = 80f
-        val bottom = h - 60f
-        val totalBodyHeight = bottom - top
 
-        // 1. Draw 3D Positive Terminal (+) at top ONLY if 100% charged
+        // Divide screen height into 100 steps from bottom to top
+        val screenBottom = h - 20f
+        val screenTop = 80f
+        val totalMaxHeight = screenBottom - screenTop
+
+        // Active height based on exact charge percentage (1% to 100%)
+        val fillRatio = batteryPercent / 100f
+        val currentFillHeight = (totalMaxHeight * fillRatio).coerceAtLeast(15f)
+        val activeTop = screenBottom - currentFillHeight
+
+        // 1. Draw 3D Blue Positive Terminal (+) at top ONLY if 100% charged
         if (batteryPercent >= 100) {
             val capLeft = (w - capWidth) / 2f
             val capRight = capLeft + capWidth
-            val capTop = top - capHeight
+            val capTop = screenTop - capHeight
 
-            val capRect = RectF(capLeft, capTop, capRight, top)
+            val capRect = RectF(capLeft, capTop, capRight, screenTop)
             val capColor = Color.rgb(0, 150, 255) // Blue at 100%
 
             val capGradient = LinearGradient(
@@ -90,12 +98,7 @@ class ChargeView(context: Context) : View(context) {
             canvas.drawRoundRect(capRect, 10f, 10f, capPaint)
         }
 
-        // Calculate filled height based on percentage
-        val fillRatio = batteryPercent / 100f
-        val currentLevelHeight = (totalBodyHeight * fillRatio).coerceAtLeast(10f)
-        val activeTop = bottom - currentLevelHeight
-
-        // 2. Draw 3D Metallic Shell/Casing ONLY up to current charge height (extremely dim ~0.01 alpha equivalent)
+        // 2. Draw Metallic 3D Shell Casing (Dim, ~0.01 brightness) ONLY up to current percent height
         val dimShellGradient = LinearGradient(
             left, 0f, right, 0f,
             intArrayOf(
@@ -109,52 +112,49 @@ class ChargeView(context: Context) : View(context) {
         )
         batteryBodyPaint.shader = dimShellGradient
         batteryBodyPaint.strokeWidth = 14f
-        
-        val visibleShellRect = RectF(left, activeTop, right, bottom)
-        canvas.drawRoundRect(visibleShellRect, 28f, 28f, batteryBodyPaint)
+        val visibleShellRect = RectF(left, activeTop, right, screenBottom)
+        canvas.drawRoundRect(visibleShellRect, 24f, 24f, batteryBodyPaint)
 
-        // 3. Draw Inner Liquid Fill ONLY up to current charge height
-        // Vertical gradient from bottom (Red -> Orange -> Yellow -> Green)
+        // 3. Draw Multi-Color Liquid Fill (Red at bottom -> Orange -> Yellow -> Green at top)
         val innerMargin = 10f
         val fillLeft = left + innerMargin
         val fillRight = right - innerMargin
-        val fillBottom = bottom - innerMargin
+        val fillBottom = screenBottom - innerMargin
         val fillTop = activeTop + innerMargin
 
         if (fillBottom > fillTop) {
-            // Vertical multi-color gradient inside the battery (Red at bottom, Orange, Yellow, Green at top)
-            val verticalGradient = LinearGradient(
-                0f, bottom, 0f, top,
+            // Multi-color gradient matching user drawing: Red (0-30%), Orange (30-50%), Yellow (50-75%), Green (75-100%)
+            val multiColorGradient = LinearGradient(
+                0f, screenBottom, 0f, screenTop,
                 intArrayOf(
-                    Color.rgb(240, 50, 50),   // Red (bottom)
-                    Color.rgb(255, 170, 0),  // Orange
-                    Color.rgb(220, 220, 30), // Yellow
-                    Color.rgb(40, 210, 90)   // Green (top)
+                    Color.rgb(255, 50, 50),   // Red (bottom 0-30%)
+                    Color.rgb(255, 140, 0),  // Orange (30-50%)
+                    Color.rgb(255, 220, 0),  // Yellow (50-75%)
+                    Color.rgb(0, 230, 80)    // Green (75-100%)
                 ),
-                floatArrayOf(0.0f, 0.35f, 0.7f, 1.0f),
+                floatArrayOf(0.0f, 0.30f, 0.55f, 0.85f),
                 Shader.TileMode.CLAMP
             )
-            fillPaint.shader = verticalGradient
+            fillPaint.shader = multiColorGradient
             val fillRect = RectF(fillLeft, fillTop, fillRight, fillBottom)
-            canvas.drawRoundRect(fillRect, 18f, 18f, fillPaint)
+            canvas.drawRoundRect(fillRect, 16f, 16f, fillPaint)
         }
 
-        // 4. Draw FULL BRIGHTNESS Text (Percent / Temp without °C) inside bottom area of battery
+        // 4. Draw FULL BRIGHTNESS ENGLISH NUMBERS ONLY (54 / 32.7) inside bottom area of battery
         val hoursElapsed = (SystemClock.elapsedRealtime() - startTime) / (3600 * 1000)
-        val shiftStep = (hoursElapsed % 3).toInt() // 3-step burn-in protection shift: 0, 1, 2
-        val yOffset = shiftStep * 40f
+        val shiftStep = (hoursElapsed % 3).toInt() // 3-step burn-in protection shift
+        val yOffset = shiftStep * 35f
 
-        val baseTextY = bottom - 110f - yOffset
+        val baseTextY = screenBottom - 90f - yOffset
 
-        // Format: "55 / 33.8" (Percent colored by level, slash blue, temp colored by tempColor without °C)
-        val tempFormatted = String.format("%.1f", tempCelsius)
-        val percentText = "$batteryPercent"
+        // Strictly enforce English locale for digits
+        val tempFormatted = String.format(Locale.US, "%.1f", tempCelsius)
+        val percentText = String.format(Locale.US, "%d", batteryPercent)
         val slashText = " / "
-        val tempText = "$tempFormatted"
+        val tempText = tempFormatted
 
-        textPaint.textSize = 52f
+        textPaint.textSize = 50f
 
-        // Measure widths for centering
         val percentColor = BatteryWidgetProvider.colorFor(batteryPercent)
         textPaint.color = percentColor
         val percentWidth = textPaint.measureText(percentText)
@@ -171,7 +171,7 @@ class ChargeView(context: Context) : View(context) {
 
         textPaint.textAlign = Paint.Align.LEFT
 
-        // Draw Percent Part
+        // Draw Percent Part (English Digits)
         textPaint.color = percentColor
         canvas.drawText(percentText, startX, baseTextY, textPaint)
 
@@ -179,7 +179,7 @@ class ChargeView(context: Context) : View(context) {
         textPaint.color = Color.rgb(0, 150, 255)
         canvas.drawText(slashText, startX + percentWidth, baseTextY, textPaint)
 
-        // Draw Temp Part (colored by tempColor, no °C)
+        // Draw Temp Part (English Digits, Temp Color)
         textPaint.color = tempNumberColor
         canvas.drawText(tempText, startX + percentWidth + slashWidth, baseTextY, textPaint)
     }
