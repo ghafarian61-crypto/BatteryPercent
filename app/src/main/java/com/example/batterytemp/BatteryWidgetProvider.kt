@@ -73,7 +73,6 @@ class BatteryWidgetProvider : AppWidgetProvider() {
                 context,
                 0,
                 Intent(context, ChargeActivity::class.java)
-                    .putExtra(ChargeActivity.EXTRA_PREVIEW, true)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )

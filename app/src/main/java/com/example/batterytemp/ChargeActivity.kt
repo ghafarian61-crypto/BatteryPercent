@@ -10,9 +10,11 @@ import android.os.Handler
 import android.os.Looper
 import android.view.View
 import android.view.WindowManager
-import androidx.appcompat.app.AppCompatActivity
 
-class ChargeActivity : AppCompatActivity() {
+
+import android.app.Activity
+
+class ChargeActivity : Activity() {
 
     private lateinit var chargeView: ChargeView
     private val handler = Handler(Looper.getMainLooper())
