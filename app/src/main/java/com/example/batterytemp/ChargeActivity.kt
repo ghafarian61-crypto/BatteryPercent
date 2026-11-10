@@ -21,8 +21,9 @@ class ChargeActivity : Activity() {
     
     private var isPluggedIn = false
     private var autoCloseRunnable: Runnable? = null
-    private var dimRunnable: Runnable? = null
+    private var pulseRunnable: Runnable? = null
     private var currentLevel = 0
+    private var isPulseBright = false
 
     private lateinit var gestureDetector: GestureDetector
 
@@ -45,6 +46,9 @@ class ChargeActivity : Activity() {
                         or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
                 )
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+
+        // Keep window brightness at max; pixel-level color alpha handles the OLED burn-in dimming/pulsing smoothly!
+        setBrightness(1.0f)
 
         chargeView = ChargeView(this)
         setContentView(chargeView)
@@ -80,34 +84,36 @@ class ChargeActivity : Activity() {
         val levelChanged = (currentLevel != pct)
         currentLevel = pct
 
-        chargeView.updateData(pct, tempCelsius)
-
         if (pct >= 100) {
-            // 100% Charged behavior: 10 seconds full brightness, then auto close
-            setBrightness(1.0f)
+            // 100% Charged behavior: 10 seconds full brightness pulse, then auto close
+            isPulseBright = true
+            chargeView.updateData(pct, tempCelsius, isPulseBright)
             cancelPendingRunnables()
             autoCloseRunnable = Runnable { finish() }
             handler.postDelayed(autoCloseRunnable!!, 10000)
         } else if (levelChanged && pct > 0 && pct % 10 == 0) {
-            // Every 10% (10, 20, 30, 40, 50, 60, 70, 80, 90): pulse full brightness for 10 SECONDS
-            pulseMaxBrightness(10000)
-        } else if (isPluggedIn) {
-            setBrightness(0.01f)
+            // Every 10% (10, 20, 30, 40, 50, 60, 70, 80, 90): pulse full brightness for 10 seconds
+            triggerBrightPulse(10000)
+            chargeView.updateData(pct, tempCelsius, isPulseBright)
         } else {
-            setBrightness(1.0f)
-            cancelAutoCloseRunnable()
-            autoCloseRunnable = Runnable { finish() }
-            handler.postDelayed(autoCloseRunnable!!, 1000)
+            chargeView.updateData(pct, tempCelsius, isPulseBright)
+            if (!isPluggedIn && autoCloseRunnable == null) {
+                cancelAutoCloseRunnable()
+                autoCloseRunnable = Runnable { finish() }
+                handler.postDelayed(autoCloseRunnable!!, 1000)
+            }
         }
     }
 
-    private fun pulseMaxBrightness(durationMs: Long) {
-        setBrightness(1.0f)
-        cancelDimRunnable()
-        if (isPluggedIn && currentLevel < 100) {
-            dimRunnable = Runnable { setBrightness(0.01f) }
-            handler.postDelayed(dimRunnable!!, durationMs)
+    private fun triggerBrightPulse(durationMs: Long) {
+        isPulseBright = true
+        chargeView.updateData(currentLevel, chargeView.let { 0f }, isPulseBright) // will be updated with real temp in handleBatteryIntent
+        cancelPulseRunnable()
+        pulseRunnable = Runnable {
+            isPulseBright = false
+            chargeView.invalidate()
         }
+        handler.postDelayed(pulseRunnable!!, durationMs)
     }
 
     private fun setBrightness(value: Float) {
@@ -118,15 +124,15 @@ class ChargeActivity : Activity() {
 
     private fun cancelPendingRunnables() {
         cancelAutoCloseRunnable()
-        cancelDimRunnable()
+        cancelPulseRunnable()
     }
 
     private fun cancelAutoCloseRunnable() {
         autoCloseRunnable?.let { handler.removeCallbacks(it) }
     }
 
-    private fun cancelDimRunnable() {
-        dimRunnable?.let { handler.removeCallbacks(it) }
+    private fun cancelPulseRunnable() {
+        pulseRunnable?.let { handler.removeCallbacks(it) }
     }
 
     override fun onDestroy() {
