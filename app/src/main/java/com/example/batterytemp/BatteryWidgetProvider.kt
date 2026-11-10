@@ -33,15 +33,15 @@ class BatteryWidgetProvider : AppWidgetProvider() {
         }
 
         /** Temperature colour: up to 27 blue, 28-30 green, 31-35 orange, 36 and above red. */
-        fun tempColor(temp: Int): Int = when {
-            temp <= 27 -> Color.rgb(64, 156, 255)
-            temp <= 30 -> Color.rgb(48, 209, 88)
-            temp <= 35 -> Color.rgb(255, 149, 0)
+        fun tempColor(temp: Float): Int = when {
+            temp <= 27.0f -> Color.rgb(64, 156, 255)
+            temp <= 30.0f -> Color.rgb(48, 209, 88)
+            temp <= 35.0f -> Color.rgb(255, 149, 0)
             else -> Color.rgb(255, 59, 48)
         }
 
-        /** Builds "85/36" with the percent and the temperature each in their own colour. */
-        private fun buildText(level: Int, temp: Int): CharSequence {
+        /** Builds "55/33.8" with percent, blue slash, and decimal temperature with its color. */
+        private fun buildText(level: Int, tempTenths: Int): CharSequence {
             val sb = SpannableStringBuilder()
             val levelText = if (level >= 0) level.toString() else "--"
             sb.append(levelText)
@@ -49,12 +49,21 @@ class BatteryWidgetProvider : AppWidgetProvider() {
                 ForegroundColorSpan(colorFor(level)),
                 0, sb.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
             )
-            if (temp != BatteryInfo.NO_TEMP) {
+            
+            if (tempTenths != Int.MIN_VALUE) {
+                val tempCelsius = tempTenths / 10.0f
                 sb.append("/")
-                val start = sb.length
-                sb.append(temp.toString())
+                val slashStart = sb.length - 1
                 sb.setSpan(
-                    ForegroundColorSpan(tempColor(temp)),
+                    ForegroundColorSpan(Color.rgb(0, 150, 255)), // Blue slash
+                    slashStart, sb.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                )
+
+                val start = sb.length
+                val tempFormatted = String.format("%.1f", tempCelsius)
+                sb.append(tempFormatted)
+                sb.setSpan(
+                    ForegroundColorSpan(tempColor(tempCelsius)),
                     start, sb.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
                 )
             }
@@ -66,7 +75,10 @@ class BatteryWidgetProvider : AppWidgetProvider() {
             val ids = manager.getAppWidgetIds(ComponentName(context, BatteryWidgetProvider::class.java))
             if (ids.isEmpty()) return
 
-            val text = buildText(BatteryInfo.level(battery), BatteryInfo.temp(battery))
+            val level = BatteryInfo.level(battery)
+            val tempTenths = battery?.getIntExtra(android.os.BatteryManager.EXTRA_TEMPERATURE, Int.MIN_VALUE) ?: Int.MIN_VALUE
+
+            val text = buildText(level, tempTenths)
 
             // Tapping the widget shows the level full screen for 1 second.
             val tap = PendingIntent.getActivity(

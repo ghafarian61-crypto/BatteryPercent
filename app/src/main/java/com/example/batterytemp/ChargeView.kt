@@ -37,6 +37,13 @@ class ChargeView(context: Context) : View(context) {
         invalidate()
     }
 
+    private fun tempColor(temp: Float): Int = when {
+        temp <= 27.0f -> Color.rgb(64, 156, 255)
+        temp <= 30.0f -> Color.rgb(48, 209, 88)
+        temp <= 35.0f -> Color.rgb(255, 149, 0)
+        else -> Color.rgb(255, 59, 48)
+    }
+
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
 
@@ -84,19 +91,18 @@ class ChargeView(context: Context) : View(context) {
         }
 
         // Calculate filled height based on percentage
-        // Above batteryPercent height, everything remains black/off!
         val fillRatio = batteryPercent / 100f
         val currentLevelHeight = (totalBodyHeight * fillRatio).coerceAtLeast(10f)
         val activeTop = bottom - currentLevelHeight
 
-        // 2. Draw 3D Metallic Shell/Casing ONLY up to current charge height (dim 3D effect)
+        // 2. Draw 3D Metallic Shell/Casing ONLY up to current charge height (extremely dim ~0.01 alpha equivalent)
         val dimShellGradient = LinearGradient(
             left, 0f, right, 0f,
             intArrayOf(
-                Color.argb(70, 40, 45, 55),
-                Color.argb(80, 110, 115, 130),
-                Color.argb(90, 180, 185, 200),
-                Color.argb(70, 50, 55, 65)
+                Color.argb(12, 40, 45, 55),
+                Color.argb(18, 110, 115, 130),
+                Color.argb(22, 180, 185, 200),
+                Color.argb(12, 50, 55, 65)
             ),
             floatArrayOf(0.0f, 0.3f, 0.65f, 1.0f),
             Shader.TileMode.CLAMP
@@ -108,6 +114,7 @@ class ChargeView(context: Context) : View(context) {
         canvas.drawRoundRect(visibleShellRect, 28f, 28f, batteryBodyPaint)
 
         // 3. Draw Inner Liquid Fill ONLY up to current charge height
+        // Vertical gradient from bottom (Red -> Orange -> Yellow -> Green)
         val innerMargin = 10f
         val fillLeft = left + innerMargin
         val fillRight = right - innerMargin
@@ -115,51 +122,48 @@ class ChargeView(context: Context) : View(context) {
         val fillTop = activeTop + innerMargin
 
         if (fillBottom > fillTop) {
-            val levelColor = calculateLevelColor(batteryPercent)
-
-            // Dim 3D Metallic fill gradient (low brightness casing fill)
-            val fillGradient = LinearGradient(
-                fillLeft, 0f, fillRight, 0f,
+            // Vertical multi-color gradient inside the battery (Red at bottom, Orange, Yellow, Green at top)
+            val verticalGradient = LinearGradient(
+                0f, bottom, 0f, top,
                 intArrayOf(
-                    darkenColor(levelColor, 0.35f),
-                    levelColor,
-                    lightenColor(levelColor, 1.2f),
-                    darkenColor(levelColor, 0.45f)
+                    Color.rgb(240, 50, 50),   // Red (bottom)
+                    Color.rgb(255, 170, 0),  // Orange
+                    Color.rgb(220, 220, 30), // Yellow
+                    Color.rgb(40, 210, 90)   // Green (top)
                 ),
-                floatArrayOf(0.0f, 0.35f, 0.75f, 1.0f),
+                floatArrayOf(0.0f, 0.35f, 0.7f, 1.0f),
                 Shader.TileMode.CLAMP
             )
-            fillPaint.shader = fillGradient
+            fillPaint.shader = verticalGradient
             val fillRect = RectF(fillLeft, fillTop, fillRight, fillBottom)
             canvas.drawRoundRect(fillRect, 18f, 18f, fillPaint)
         }
 
-        // 4. Draw FULL BRIGHTNESS Text (Percent / Temp) inside bottom area of battery
+        // 4. Draw FULL BRIGHTNESS Text (Percent / Temp without °C) inside bottom area of battery
         val hoursElapsed = (SystemClock.elapsedRealtime() - startTime) / (3600 * 1000)
         val shiftStep = (hoursElapsed % 3).toInt() // 3-step burn-in protection shift: 0, 1, 2
         val yOffset = shiftStep * 40f
 
         val baseTextY = bottom - 110f - yOffset
-        val levelColor = calculateLevelColor(batteryPercent)
 
-        // Format: "56 / 31.9°C"
+        // Format: "55 / 33.8" (Percent colored by level, slash blue, temp colored by tempColor without °C)
         val tempFormatted = String.format("%.1f", tempCelsius)
         val percentText = "$batteryPercent"
         val slashText = " / "
-        val tempText = "$tempFormatted°C"
+        val tempText = "$tempFormatted"
 
         textPaint.textSize = 52f
 
         // Measure widths for centering
-        textPaint.color = levelColor
+        val percentColor = BatteryWidgetProvider.colorFor(batteryPercent)
+        textPaint.color = percentColor
         val percentWidth = textPaint.measureText(percentText)
 
         textPaint.color = Color.rgb(0, 150, 255) // Blue slash '/'
         val slashWidth = textPaint.measureText(slashText)
 
-        val isHighTemp = tempCelsius >= 41.0f
-        val tempColor = if (isHighTemp) Color.rgb(255, 60, 60) else Color.WHITE
-        textPaint.color = tempColor
+        val tempNumberColor = tempColor(tempCelsius)
+        textPaint.color = tempNumberColor
         val tempWidth = textPaint.measureText(tempText)
 
         val totalWidth = percentWidth + slashWidth + tempWidth
@@ -167,26 +171,17 @@ class ChargeView(context: Context) : View(context) {
 
         textPaint.textAlign = Paint.Align.LEFT
 
-        // Draw Percent Part (Colored by Battery Level)
-        textPaint.color = levelColor
+        // Draw Percent Part
+        textPaint.color = percentColor
         canvas.drawText(percentText, startX, baseTextY, textPaint)
 
         // Draw Slash '/' (Blue)
         textPaint.color = Color.rgb(0, 150, 255)
         canvas.drawText(slashText, startX + percentWidth, baseTextY, textPaint)
 
-        // Draw Temp Part (White or Red if >= 41°C)
-        textPaint.color = tempColor
+        // Draw Temp Part (colored by tempColor, no °C)
+        textPaint.color = tempNumberColor
         canvas.drawText(tempText, startX + percentWidth + slashWidth, baseTextY, textPaint)
-    }
-
-    private fun calculateLevelColor(pct: Int): Int {
-        return when {
-            pct <= 15 -> Color.rgb(240, 50, 50)   // Red
-            pct <= 45 -> Color.rgb(255, 170, 0)  // Orange / Amber
-            pct <= 75 -> Color.rgb(220, 220, 30) // Yellow-Green
-            else -> Color.rgb(40, 210, 90)        // Bright Green
-        }
     }
 
     private fun lightenColor(color: Int, factor: Float): Int {

@@ -70,7 +70,7 @@ class ChargeActivity : Activity() {
 
     private fun handleBatteryIntent(intent: Intent) {
         val level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
-        val scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
+        val scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, -1)	
         val pct = if (level >= 0 && scale > 0) (level * 100) / scale else 0
         val tempTenths = intent.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 0)
         val tempCelsius = tempTenths / 10.0f
@@ -85,16 +85,27 @@ class ChargeActivity : Activity() {
         chargeView.updateData(pct, tempCelsius)
 
         if (pct >= 100) {
-            // 100% Charged behavior: 10 seconds display, then auto close
+            // 100% Charged behavior: 10 seconds full brightness, then auto close
+            setBrightness(1.0f)
             cancelAutoCloseRunnable()
             autoCloseRunnable = Runnable { finish() }
             handler.postDelayed(autoCloseRunnable!!, 10000)
-        } else if (!isPluggedIn) {
-            // Opened manually from widget tap (not charging): close after 1 second
+        } else if (isPluggedIn) {
+            // While plugged in: 0.01 brightness (extremely dim for OLED burn-in protection)
+            setBrightness(0.01f)
+        } else {
+            // Opened manually from widget tap (not charging): full brightness and close after 1 second
+            setBrightness(1.0f)
             cancelAutoCloseRunnable()
             autoCloseRunnable = Runnable { finish() }
             handler.postDelayed(autoCloseRunnable!!, 1000)
         }
+    }
+
+    private fun setBrightness(value: Float) {
+        val lp = window.attributes
+        lp.screenBrightness = value
+        window.attributes = lp
     }
 
     private fun cancelAutoCloseRunnable() {
