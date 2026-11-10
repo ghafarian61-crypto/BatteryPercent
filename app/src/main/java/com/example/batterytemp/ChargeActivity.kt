@@ -21,6 +21,7 @@ class ChargeActivity : Activity() {
     
     private var isPluggedIn = false
     private var autoCloseRunnable: Runnable? = null
+    private var dimRunnable: Runnable? = null
     private var currentLevel = 0
 
     private lateinit var gestureDetector: GestureDetector
@@ -87,9 +88,12 @@ class ChargeActivity : Activity() {
         if (pct >= 100) {
             // 100% Charged behavior: 10 seconds full brightness, then auto close
             setBrightness(1.0f)
-            cancelAutoCloseRunnable()
+            cancelPendingRunnables()
             autoCloseRunnable = Runnable { finish() }
             handler.postDelayed(autoCloseRunnable!!, 10000)
+        } else if (levelChanged && pct > 0 && pct % 10 == 0) {
+            // Every 10% (10, 20, 30, 40, 50, 60, 70, 80, 90): pulse 1 second max brightness, then dim back if charging
+            pulseMaxBrightness(1000)
         } else if (isPluggedIn) {
             // While plugged in: 0.01 brightness (extremely dim for OLED burn-in protection)
             setBrightness(0.01f)
@@ -102,19 +106,37 @@ class ChargeActivity : Activity() {
         }
     }
 
+    private fun pulseMaxBrightness(durationMs: Long) {
+        setBrightness(1.0f)
+        cancelDimRunnable()
+        if (isPluggedIn && currentLevel < 100) {
+            dimRunnable = Runnable { setBrightness(0.01f) }
+            handler.postDelayed(dimRunnable!!, durationMs)
+        }
+    }
+
     private fun setBrightness(value: Float) {
         val lp = window.attributes
         lp.screenBrightness = value
         window.attributes = lp
     }
 
+    private fun cancelPendingRunnables() {
+        cancelAutoCloseRunnable()
+        cancelDimRunnable()
+    }
+
     private fun cancelAutoCloseRunnable() {
         autoCloseRunnable?.let { handler.removeCallbacks(it) }
+    }
+
+    private fun cancelDimRunnable() {
+        dimRunnable?.let { handler.removeCallbacks(it) }
     }
 
     override fun onDestroy() {
         super.onDestroy()
         unregisterReceiver(batteryReceiver)
-        cancelAutoCloseRunnable()
+        cancelPendingRunnables()
     }
 }
