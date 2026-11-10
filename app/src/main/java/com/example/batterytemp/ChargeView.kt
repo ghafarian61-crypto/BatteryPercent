@@ -76,6 +76,13 @@ class ChargeView(context: Context) : View(context) {
             invalidate()
         }
 
+    /** Short full-brightness flash: colours are drawn without the night dimming. */
+    var bright: Boolean = false
+        set(value) {
+            field = value
+            invalidate()
+        }
+
     var level: Int = 0
         set(value) {
             field = value.coerceIn(0, 100)
@@ -176,11 +183,19 @@ class ChargeView(context: Context) : View(context) {
             canvas.drawOval(oval, rimPaint)
         }
 
-        // Night mode: darken everything drawn so far.
-        canvas.drawRect(0f, 0f, w, h, dimPaint)
+        // Night mode: darken everything drawn so far (not during a flash).
+        if (!bright) canvas.drawRect(0f, 0f, w, h, dimPaint)
 
+        // The number never gets dimmed. To protect the screen from burn-in it moves every
+        // 10%: centre (0-9), right (10-19), left (20-29), centre (30-39), and so on.
         val label = if (temp == BatteryInfo.NO_TEMP) level.toString() else "$level/$temp"
-        canvas.drawText(label, w / 2f, h - bottomMargin, textPaint)
+        val shift = textPaint.measureText("0") * NUMBER_SHIFT_DIGITS
+        val x = when ((level / 10) % 3) {
+            1 -> w / 2f + shift
+            2 -> w / 2f - shift
+            else -> w / 2f
+        }
+        canvas.drawText(label, x, h - bottomMargin, textPaint)
     }
 
     private fun scale(c: Int, f: Float): Int {
@@ -191,11 +206,18 @@ class ChargeView(context: Context) : View(context) {
     }
 
     companion object {
-        /** How bright the colours are, 0..1. Lower = darker at night (1.0 = full colour). */
-        const val COLOR_SCALE = 0.35f
+        /**
+         * Strength of the fill colours, 0..1. The panel runs at full brightness, so this must be
+         * very small to look dark at night. Raise it (0.10, 0.15 ...) if the colours are too faint,
+         * lower it (0.04) if they are too bright.
+         */
+        const val COLOR_SCALE = 0.07f
 
         /** Blue number colour and its own brightness (0..1). */
         val NUMBER_COLOR: Int = Color.rgb(41, 121, 255)
-        const val NUMBER_SCALE = 0.6f
+        const val NUMBER_SCALE = 1f
+
+        /** How far the number moves every 10%, measured in digit widths. */
+        const val NUMBER_SHIFT_DIGITS = 2
     }
 }

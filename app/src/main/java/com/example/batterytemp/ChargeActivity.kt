@@ -27,9 +27,13 @@ class ChargeActivity : Activity() {
         private const val PREVIEW_MS = 1000L
         private const val DOUBLE_TAP_MS = 500L
         private const val FULL_GREEN_MS = 1000L
+        private const val FLASH_MS = 1000L
 
-        /** 0 = the lowest brightness the phone allows. */
-        private const val DIM_BRIGHTNESS = 0f
+        /**
+         * Panel brightness stays at maximum so the blue number is really bright.
+         * Everything else is made dark by dimming its colours (see ChargeView.COLOR_SCALE).
+         */
+        private const val SCREEN_BRIGHTNESS = 1f
     }
 
     private lateinit var chargeView: ChargeView
@@ -37,8 +41,14 @@ class ChargeActivity : Activity() {
     private var preview = false
     private var lastTap = 0L
     private var showingFull = false
+    private var prevLevel = -1
 
     private val closeRunnable = Runnable { closeAutomatically() }
+
+    /** Ends the 10% flash: colours go back to the dark night look. */
+    private val endFlashRunnable = Runnable {
+        if (!showingFull) chargeView.bright = false
+    }
 
     private val batteryReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) = onBattery(intent)
@@ -55,7 +65,7 @@ class ChargeActivity : Activity() {
                 WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED
         )
         val lp = window.attributes
-        lp.screenBrightness = DIM_BRIGHTNESS
+        lp.screenBrightness = SCREEN_BRIGHTNESS
         if (Build.VERSION.SDK_INT >= 28) {
             lp.layoutInDisplayCutoutMode =
                 WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
@@ -123,6 +133,12 @@ class ChargeActivity : Activity() {
         val level = BatteryInfo.level(i)
         chargeView.temp = BatteryInfo.temp(i)
         if (level >= 0) chargeView.level = level
+        if (!preview && !showingFull && level in 0..99 && prevLevel >= 0 &&
+            level / 10 > prevLevel / 10
+        ) {
+            flashBright() // crossed 10, 20, 30 ... %
+        }
+        if (level >= 0) prevLevel = level
         if (!preview) {
             if (level >= 100) {
                 ChargeState.fullReached = true
@@ -133,13 +149,18 @@ class ChargeActivity : Activity() {
         }
     }
 
+    /** Every 10%: one second with full-strength colours, then back to night mode. */
+    private fun flashBright() {
+        chargeView.bright = true
+        handler.removeCallbacks(endFlashRunnable)
+        handler.postDelayed(endFlashRunnable, FLASH_MS)
+    }
+
     /** Battery is full: whole screen green at maximum brightness for 1 second, then close. */
     private fun showFullGreenThenClose() {
         if (showingFull) return
         showingFull = true
-        val lp = window.attributes
-        lp.screenBrightness = 1f
-        window.attributes = lp
+        handler.removeCallbacks(endFlashRunnable)
         chargeView.fullGreen = true
         handler.removeCallbacks(closeRunnable)
         handler.postDelayed(closeRunnable, FULL_GREEN_MS)
