@@ -4,9 +4,9 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
-    <!-- Transparent widget: the number grows and shrinks with the widget size. -->
+    <!-- Transparent widget: "level/temp" grows and shrinks with the widget size. -->
     <TextView
-        android:id="@+id/temp_value"
+        android:id="@+id/widget_text"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:gravity="center"

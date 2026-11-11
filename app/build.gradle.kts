@@ -4,15 +4,15 @@ plugins {
 }
 
 android {
-    namespace = "com.example.batterytemp"
+    namespace = "com.example.batterypercent"
     compileSdk = 34
 
     defaultConfig {
         applicationId = "com.example.batterypercent"
         minSdk = 26
         targetSdk = 33
-        versionCode = 2
-        versionName = "2.0"
+        versionCode = 4
+        versionName = "3.1"
     }
 
     buildTypes {
