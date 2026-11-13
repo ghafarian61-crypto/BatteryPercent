@@ -6,7 +6,7 @@ import android.os.Looper
 
 /**
  * Opened by tapping the widget. Independent of the charger: shows the current level and temperature
- * at full brightness for one second and then closes itself (and leaves no trace in recents).
+ * at full brightness for three seconds and then closes itself (and leaves no trace in recents).
  */
 class PeekActivity : FullScreenActivity() {
 
@@ -17,6 +17,7 @@ class PeekActivity : FullScreenActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setBrightness(FULL_BRIGHTNESS)
+        chargeView.centerAlways = true      // same picture as while charging, but the tube stays in the middle
 
         val battery = BatteryInfo.sticky(this)
         chargeView.updateData(BatteryInfo.level(battery).coerceAtLeast(0), BatteryInfo.temp(battery))
@@ -30,7 +31,7 @@ class PeekActivity : FullScreenActivity() {
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-        // Count the second from the moment the picture is really on screen.
+        // Count the three seconds from the moment the picture is really on screen.
         if (hasFocus && !timerStarted) {
             timerStarted = true
             handler.postDelayed(closer, PEEK_MS)

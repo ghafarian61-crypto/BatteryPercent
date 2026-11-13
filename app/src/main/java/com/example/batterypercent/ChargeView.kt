@@ -11,25 +11,30 @@ import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.Typeface
+import android.os.Build
 import android.os.SystemClock
 import android.view.View
+import android.view.WindowInsets
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sin
 
 /**
- * Black screen with a glass battery "cylinder" that fills from the bottom, and "percent / temp" under it.
+ * Black screen with a glass battery "cylinder" that fills from the bottom. The charge number sits on the
+ * left of the cylinder and the temperature on the right, both near the bottom of the screen.
  *
  * Look: a thin transparent glass tube with a blue (level-100 colour) shell and an elliptical rim on top.
  * The coloured liquid is seen through the glass and touches the shell everywhere. The top edge of the
  * liquid is animated: it sloshes left and right with a small ripple.
  *
- * Rules (unchanged from the flat version):
- *  - the level is drawn from the bottom, the colour bands are at fixed percent edges (0-10-30-60-100),
- *  - only the bands up to the current level are shown, the blue cap appears at 100 % only,
- *  - burn-in protection: every time the level crosses a multiple of 10 the picture moves:
- *      * the cylinder alternates between the right and the left half of its slot,
- *      * the numbers alternate between a lower and an upper slot that do not overlap at all.
+ * At 100 %: the liquid fills the tube up to the blue cap, the waves stop, the tube moves to the middle
+ * and the blue cap sits right under the camera hole.
+ *
+ * Burn-in protection: every time the level crosses a multiple of 10 the picture moves:
+ *  - the cylinder alternates between the right and the left half of its slot (never when [centerAlways]),
+ *  - the numbers alternate between a lower and an upper slot that do not overlap at all. Horizontally the
+ *    numbers never move: they stand just outside the farthest wall the cylinder can reach, so the
+ *    cylinder never touches them.
  *
  * Nothing is allocated inside onDraw.
  */
@@ -43,13 +48,21 @@ class ChargeView(context: Context) : View(context) {
     private var tempText = "--"
     private var tempTextColor = Color.WHITE
     private var percentWidth = 0f
-    private var tempWidth = 0f
+
+    /** Widget peek: the cylinder always stays in the middle (the 10 % left/right jump is off). */
+    var centerAlways = false
+        set(value) {
+            field = value
+            invalidate()
+        }
+
+    /** Bottom edge of the camera cut-out (px), 0 when the phone has none / it is unknown. */
+    private var cutoutBottom = 0f
 
     private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         textSize = dp(TEXT_SIZE_DP)
     }
-    private val slashWidth = textPaint.measureText(SLASH)
 
     /** Ink bounds of the widest possible text line relative to its baseline (top is negative). */
     private val inkTop: Float
@@ -93,7 +106,7 @@ class ChargeView(context: Context) : View(context) {
     /** One shared timer: redraws ~30 fps while the view is on screen so the liquid keeps moving. */
     private val ticker = object : Runnable {
         override fun run() {
-            invalidate()
+            if (percent < 100) invalidate()     // at 100 % the picture is still, nothing to animate
             postDelayed(this, FRAME_MS)
         }
     }
@@ -110,7 +123,6 @@ class ChargeView(context: Context) : View(context) {
         percentText = this.percent.toString()
         percentWidth = textPaint.measureText(percentText)
         tempText = if (temp.isNaN()) "--" else BatteryInfo.formatTemp(temp)
-        tempWidth = textPaint.measureText(tempText)
         tempTextColor = BatteryInfo.tempColor(temp)
         invalidate()
     }
@@ -124,8 +136,21 @@ class ChargeView(context: Context) : View(context) {
         removeCallbacks(ticker)
     }
 
+    private fun readCutout(insets: WindowInsets?) {
+        if (insets == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return
+        val cut = insets.displayCutout
+        cutoutBottom = (cut?.safeInsetTop ?: 0).toFloat()
+        invalidate()
+    }
+
+    override fun onApplyWindowInsets(insets: WindowInsets): WindowInsets {
+        readCutout(insets)
+        return super.onApplyWindowInsets(insets)
+    }
+
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
+        readCutout(rootWindowInsets)
         if (windowVisibility == VISIBLE) startTicker()
     }
 
@@ -154,36 +179,44 @@ class ChargeView(context: Context) : View(context) {
         if (w <= 0f || h <= 0f) return
 
         val t = (SystemClock.uptimeMillis() - startMs) / 1000f
+        val full = percent >= 100
 
         // Changes every time the level crosses a multiple of 10.
         val rightSide = (percent / 10) % 2 == 0
 
-        // ---- vertical layout: [cap][cylinder][upper text slot][lower text slot] ----
+        // ---- vertical layout: the cylinder and the numbers go as low as the screen allows ----
         val inkH = inkBottom - inkTop
-        val lowBase = h - dp(48f)                       // baseline of the lower slot
+        val bottom = h - dp(BOTTOM_MARGIN_DP)           // lowest point of the cylinder
+        val lowBase = bottom - max(inkBottom, 0f)       // baseline of the lower number slot
         val highBase = lowBase - (inkH + dp(14f))       // upper slot sits above it, 14dp of clear black between
-        val bottom = highBase + inkTop - dp(28f)        // lowest point of the cylinder
-        val top = dp(30f)                               // highest point of the cylinder rim at 100 % (cap is above)
 
         // ---- horizontal layout: the tube sits in the right or the left half of its slot ----
         val fullW = min(w * 0.60f, dp(130f))
         val halfW = fullW / 2f
         val slotLeft = (w - fullW) / 2f + if (rightSide) halfW else 0f
         val tubeW = min(halfW, dp(TUBE_W_DP))
-        val cx = slotLeft + halfW / 2f
-        val x0 = cx - tubeW / 2f
-        val x1 = x0 + tubeW
         val rx = tubeW / 2f
         val ry = rx * ELLIPSE_RATIO
+        val cx = if (full || centerAlways) w / 2f else slotLeft + halfW / 2f
+        val x0 = cx - rx
+        val x1 = cx + rx
+
+        // ---- top of the cylinder: at 100 % the blue cap sits right under the camera hole ----
+        val camBottom = if (cutoutBottom > 0f) cutoutBottom else dp(FALLBACK_CAMERA_DP)
+        val capRy = dp(3.5f)
+        val capH = dp(13f)
+        val rimFull = camBottom + dp(CAMERA_GAP_DP) + capH + capRy   // centre of the rim ellipse at 100 %
 
         // ---- level geometry (same bands/edges as before, measured on the liquid column) ----
         val head = ry + dp(HEAD_EXTRA_DP)               // empty glass above the liquid: clears the rim's front arc + waves
         val yBot = bottom - ry                          // centre of the bottom ellipse
-        val yFull = top + ry + head                     // liquid level at 100 %
+        val yFull = rimFull + head                      // liquid level at the top of the scale
         val total = yBot - yFull
         val fillH = max(total * percent / 100f, dp(4f))
-        val surfaceY = yBot - fillH                     // mean liquid surface
-        val rimY = surfaceY - head                      // centre of the rim ellipse (top of the glass)
+        val surfaceScale = yBot - fillH
+        // At 100 % the liquid fills the whole glass up to the cap, flat.
+        val surfaceY = if (full) rimFull else surfaceScale   // mean liquid surface
+        val rimY = if (full) rimFull else surfaceScale - head // centre of the rim ellipse (top of the glass)
 
         // Outline of the glass: left side, rounded bottom, right side (open at the top).
         shellPath.reset()
@@ -197,8 +230,8 @@ class ChargeView(context: Context) : View(context) {
         val save = canvas.save()
         canvas.clipPath(shellPath)
 
-        // Wave: the whole surface tilts left/right (slosh) plus a small travelling ripple.
-        val amp = min(1f, fillH / dp(14f))
+        // Wave: the whole surface tilts left/right (slosh) plus a small travelling ripple. Off at 100 %.
+        val amp = if (full) 0f else min(1f, fillH / dp(14f))
         val tilt = dp(TILT_DP) * amp * sin(TAU * t / TILT_PERIOD_S)
         val ripple = dp(RIPPLE_DP) * amp
         val ph1 = TAU * t / RIPPLE_PERIOD1_S
@@ -215,7 +248,7 @@ class ChargeView(context: Context) : View(context) {
 
         // Colour bands: only the bands up to the current level; the band that contains the level
         // runs up to the top of the wave, so the highest coloured part is the one that waves.
-        val bandTop = surfaceY - dp(TILT_DP + RIPPLE_DP) - dp(1f)
+        val bandTop = if (full) rimY else surfaceY - dp(TILT_DP + RIPPLE_DP) - dp(1f)
         val topBand = when {
             percent <= 10 -> 0
             percent <= 30 -> 1
@@ -235,16 +268,26 @@ class ChargeView(context: Context) : View(context) {
         placeShader(glassShader, x0, tubeW)
         canvas.drawRect(x0 - 1f, bandTop, x1 + 1f, bottom + dp(2f), glassPaint)
 
-        // Empty glass above the wave: paint it black again, then a thin highlight on the wave itself.
-        airPath.set(crestPath)
-        airPath.lineTo(x1 + 1f, bandTop - dp(2f))
-        airPath.lineTo(x0 - 1f, bandTop - dp(2f))
-        airPath.close()
-        fillPaint.color = Color.BLACK
-        canvas.drawPath(airPath, fillPaint)
-        canvas.drawPath(crestPath, crestPaint)
+        if (!full) {
+            // Empty glass above the wave: paint it black again, then a thin highlight on the wave itself.
+            airPath.set(crestPath)
+            airPath.lineTo(x1 + 1f, bandTop - dp(2f))
+            airPath.lineTo(x0 - 1f, bandTop - dp(2f))
+            airPath.close()
+            fillPaint.color = Color.BLACK
+            canvas.drawPath(airPath, fillPaint)
+            canvas.drawPath(crestPath, crestPaint)
+        }
 
         canvas.restoreToCount(save)
+
+        // Full: the top face of the liquid closes the glass right under the cap.
+        if (full) {
+            ovalRect.set(x0, rimY - ry, x1, rimY + ry)
+            fillPaint.color = BAND_COLORS[3]
+            canvas.drawOval(ovalRect, fillPaint)
+            canvas.drawOval(ovalRect, glassPaint)
+        }
 
         // ---- glass shell: blue outline and the elliptical rim ----
         placeShader(shellShader, x0, tubeW)
@@ -267,11 +310,10 @@ class ChargeView(context: Context) : View(context) {
         }
 
         // ---- cap (+) terminal, blue at 100% ----
-        if (percent >= 100) {
+        if (full) {
             val capW = tubeW * 0.48f
             val capL = cx - capW / 2f
-            val capRy = dp(3.5f)
-            val capTopY = rimY - dp(13f)
+            val capTopY = rimY - capH
             placeShader(capShader, capL, capW)
             capPath.reset()
             capPath.moveTo(capL, capTopY)
@@ -286,22 +328,29 @@ class ChargeView(context: Context) : View(context) {
             canvas.drawOval(capRect, fillPaint)
         }
 
-        // Numbers: "percent / temp", centered, alternating between the two slots
+        // ---- numbers: charge on the left, temperature on the right of the cylinder ----
+        // Fixed horizontally: just outside the farthest wall the cylinder can reach in either half.
+        // Only the height changes (lower / upper slot).
         val baseline = if (rightSide) lowBase else highBase
-        val x = (w - (percentWidth + slashWidth + tempWidth)) / 2f
+        val outerHalf = halfW / 2f + rx
+        val gap = dp(NUMBER_GAP_DP)
+        val mid = w / 2f
 
         textPaint.color = BatteryInfo.levelColor(percent)
-        canvas.drawText(percentText, x, baseline, textPaint)
-        textPaint.color = SLASH_COLOR
-        canvas.drawText(SLASH, x + percentWidth, baseline, textPaint)
+        canvas.drawText(percentText, mid - outerHalf - gap - percentWidth, baseline, textPaint)
         textPaint.color = tempTextColor
-        canvas.drawText(tempText, x + percentWidth + slashWidth, baseline, textPaint)
+        canvas.drawText(tempText, mid + outerHalf + gap, baseline, textPaint)
     }
 
     private companion object {
-        const val TEXT_SIZE_DP = 35f          // = 2x the old 46px on a 420dpi phone
-        const val SLASH = " / "
-        const val GLYPHS = "0123456789/.-"
+        const val TEXT_SIZE_DP = 23.3f        // one third smaller than the old 35dp
+        const val GLYPHS = "0123456789.-"
+
+        // ---- layout ----
+        const val BOTTOM_MARGIN_DP = 14f      // keeps the round screen corners from clipping the bottom
+        const val NUMBER_GAP_DP = 6f          // clear black between a number and the farthest tube wall
+        const val FALLBACK_CAMERA_DP = 28f    // used when the phone reports no camera cut-out
+        const val CAMERA_GAP_DP = 3f          // gap between the camera hole and the blue cap
 
         // ---- look ----
         const val TUBE_W_DP = 46f             // thin tube (never wider than half of the slot)
@@ -327,7 +376,6 @@ class ChargeView(context: Context) : View(context) {
             BatteryInfo.levelColor(99)
         )
         val BLUE = BatteryInfo.levelColor(100)
-        val SLASH_COLOR = Color.rgb(0, 200, 255)
 
         /** Darker/lighter shade of the level-100 blue. */
         private fun shade(f: Float) = Color.rgb(

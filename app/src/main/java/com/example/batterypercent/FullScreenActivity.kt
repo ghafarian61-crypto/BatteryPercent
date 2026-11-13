@@ -1,6 +1,7 @@
 package com.example.batterypercent
 
 import android.app.Activity
+import android.os.Build
 import android.os.Bundle
 import android.view.View
 import android.view.WindowManager
@@ -16,6 +17,12 @@ abstract class FullScreenActivity : Activity() {
             WindowManager.LayoutParams.FLAG_FULLSCREEN or
                 WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
         )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            // Let the picture extend under the camera hole so the blue cap can sit right below it.
+            val lp = window.attributes
+            lp.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            window.attributes = lp
+        }
         window.decorView.systemUiVisibility = (
             View.SYSTEM_UI_FLAG_FULLSCREEN
                 or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
@@ -45,6 +52,6 @@ abstract class FullScreenActivity : Activity() {
         const val FULL_HOLD_MS = 10_000L
 
         /** How long the widget-tap preview stays on screen. */
-        const val PEEK_MS = 1_000L
+        const val PEEK_MS = 3_000L
     }
 }
