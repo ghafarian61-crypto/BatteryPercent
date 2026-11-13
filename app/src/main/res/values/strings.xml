@@ -1,0 +1,8 @@
+<resources>
+    <string name="app_name">Battery Percent</string>
+    <string name="channel_name">Battery percentage</string>
+    <string name="notif_title">Battery Percent</string>
+    <string name="msg_permissions_intro">Please allow the next prompts: notifications, battery, display over other apps</string>
+    <string name="msg_overlay_missing">\"Display over other apps\" is required to open the charging screen automatically. Open the app again to allow it.</string>
+    <string name="msg_running">Battery Percent is running</string>
+</resources>
